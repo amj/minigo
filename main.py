@@ -36,6 +36,7 @@ import selfplay_mcts
 from utils import logged_timer as timer
 import evaluation
 import sgf_wrapper
+import shipname
 import utils
 
 # How many positions we should aggregate per 'chunk'.
@@ -80,12 +81,20 @@ def bootstrap(save_file):
     dual_net.DualNetworkTrainer(save_file).bootstrap()
 
 
-def train(chunk_dir, save_file, load_file=None, generation_num=0,
+def train(chunk_dir, save_file, load_file=None, data_up_to=0,
           logdir=None, num_steps=None, verbosity=1):
-    tf_records = sorted(gfile.Glob(os.path.join(chunk_dir, '*.tfrecord.zz')))
-    tf_records = tf_records[-1 * (WINDOW_SIZE // EXAMPLES_PER_RECORD):]
+    all_tf_records = sorted(gfile.Glob(
+        os.path.join(chunk_dir, '*.tfrecord.zz')))
 
-    print("Training from:", tf_records[0], "to", tf_records[-1])
+    def accept_chunk(fname):
+        fname = os.path.basename(fname)
+        return (shipname.detect_model_num(fname) is not None and
+                shipname.detect_model_num(fname) < data_up_to)
+
+    tf_records = list(filter(accept_chunk, all_tf_records))
+    tf_records = tf_records[-1 * (WINDOW_SIZE // EXAMPLES_PER_RECORD):]
+    print("Training from:", os.path.basename(
+        tf_records[0]), "to", os.path.basename(tf_records[-1]))
 
     n = dual_net.DualNetworkTrainer(save_file)
     with timer("Training"):
@@ -96,9 +105,9 @@ def train(chunk_dir, save_file, load_file=None, generation_num=0,
 def evaluate(
         black_model: 'The path to the model to play black',
         white_model: 'The path to the model to play white',
-        output_dir: 'Where to write the evaluation results'='data/evaluate/sgf',
-        readouts: 'How many readouts to make per move.'=400,
-        games: 'the number of games to play'=16,
+        output_dir: 'Where to write the evaluation results' = 'data/evaluate/sgf',
+        readouts: 'How many readouts to make per move.' = 400,
+        games: 'the number of games to play' = 16,
         verbose: 'How verbose the players should be (see selfplay)' = 1):
 
     black_model = os.path.abspath(black_model)
@@ -125,10 +134,10 @@ def evaluate(
 
 def selfplay(
         load_file: "The path to the network model files",
-        output_dir: "Where to write the games"="data/selfplay",
-        holdout_dir: "Where to write the games"="data/holdout",
-        output_sgf: "Where to write the sgfs"="sgf/",
-        readouts: 'How many simulations to run per move'=100,
+        output_dir: "Where to write the games" = "data/selfplay",
+        holdout_dir: "Where to write the games" = "data/holdout",
+        output_sgf: "Where to write the sgfs" = "sgf/",
+        readouts: 'How many simulations to run per move' = 100,
         verbose: '>=2 will print debug info, >=3 will print boards' = 1,
         resign_threshold: 'absolute value of threshold to resign at' = 0.95,
         holdout_pct: 'how many games to hold out for evaluation' = 0.05):
@@ -160,9 +169,9 @@ def selfplay(
 
 
 def gather(
-        input_directory: 'where to look for games'='data/selfplay/',
-        output_directory: 'where to put collected games'='data/training_chunks/',
-        examples_per_record: 'how many tf.examples to gather in each chunk'=EXAMPLES_PER_RECORD):
+        input_directory: 'where to look for games' = 'data/selfplay/',
+        output_directory: 'where to put collected games' = 'data/training_chunks/',
+        examples_per_record: 'how many tf.examples to gather in each chunk' = EXAMPLES_PER_RECORD):
     _ensure_dir_exists(output_directory)
     models = [model_dir.strip('/')
               for model_dir in sorted(gfile.ListDirectory(input_directory))[-50:]]

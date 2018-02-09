@@ -49,16 +49,29 @@ def print_flags():
                     for flag, value in flags.items()))
 
 
-def get_latest_model():
-    """Finds the latest model, returning its model number and name
+def all_models():
+    """Returning all model numbers and name
 
-    Returns: (17, 000017-modelname)
+    Returns: [(17, 000017-modelname), (13, 000013-modelname), etc]
     """
     all_models = gfile.Glob(os.path.join(MODELS_DIR, '*.meta'))
     model_filenames = [os.path.basename(m) for m in all_models]
-    model_numbers_names = [
-        (shipname.detect_model_num(m), shipname.detect_model_name(m))
-        for m in model_filenames]
+    return [(shipname.detect_model_num(m), shipname.detect_model_name(m))
+            for m in model_filenames]
+
+
+def get_model(num):
+    """Finds the model name for a given number"""
+    models_by_num = dict(all_models())
+    return models_by_num.get(num, None)
+
+
+def get_latest_model():
+    """Get the most recent model.
+
+    Returns: (17, 000017-modelname)
+    """
+    model_numbers_names = all_models()
     latest_model = sorted(model_numbers_names, reverse=True)[0]
     return latest_model
 
@@ -103,19 +116,26 @@ def gather():
                 output_directory=TRAINING_CHUNK_DIR)
 
 
-def train(logdir=None):
-    model_num, model_name = get_latest_model()
+def train(logdir=None, start_from=-1, models_dir=MODELS_DIR):
+    latest_model_num, latest_model_name = get_latest_model()
+
+    model_num, model_name = start_from, get_model(start_from)
+    if model_name is None:
+        print("Model", start_from, "not found.  Starting from latest...")
+        model_name = latest_model_name
+
     print("Training on gathered game data, initializing from {}".format(model_name))
-    new_model_name = shipname.generate(model_num + 1)
-    print("New model will be {}".format(new_model_name))
-    load_file = os.path.join(MODELS_DIR, model_name)
-    save_file = os.path.join(MODELS_DIR, new_model_name)
-    try:
+    print("Saving to:", models_dir)
+
+    while model_num <= latest_model_num:
+        new_model_name = shipname.generate(model_num + 1)
+        print("New model will be {}".format(new_model_name))
+        load_file = os.path.join(models_dir, model_name)
+        save_file = os.path.join(models_dir, new_model_name)
         main.train(TRAINING_CHUNK_DIR, save_file=save_file, load_file=load_file,
-                   generation_num=model_num, logdir=logdir)
-    except:
-        print("Got an error training, muddling on...")
-        logging.exception("Train error")
+                   data_up_to=model_num, logdir=logdir)
+        model_num += 1
+        load_file = save_file
 
 
 parser = argparse.ArgumentParser()
