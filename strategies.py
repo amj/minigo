@@ -151,7 +151,9 @@ class MCTSPlayerMixin:
             fcoord = np.argmax(self.root.child_N)
         else:
             cdf = self.root.child_N.cumsum()
-            cdf /= cdf[-1]
+            cdf /= cdf[-2]  # For softpick, don't include pass.
+            import pdb
+            pdb.set_trace()
             selection = random.random()
             fcoord = cdf.searchsorted(selection)
             assert self.root.child_N[fcoord] != 0
@@ -214,14 +216,13 @@ class MCTSPlayerMixin:
         if use_comments:
             comments = self.comments or ['No comments.']
             comments[0] = ("Resign Threshold: %0.3f\n" %
-                                    self.resign_threshold) + comments[0]
+                           self.resign_threshold) + comments[0]
         else:
             comments = []
         return sgf_wrapper.make_sgf(pos.recent, self.result_string,
                                     white_name=self.network.name or "Unknown",
                                     black_name=self.network.name or "Unknown",
-                                    comments=comments) 
-
+                                    comments=comments)
 
     def extract_data(self):
         assert len(self.searches_pi) == self.root.position.n
