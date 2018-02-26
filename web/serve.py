@@ -13,7 +13,7 @@ app = Flask(__name__)
 
 
 @app.route('/')
-def hello_world():
+def index():
     models = rl_loop.get_models()
     print(models)
     return render_template("index.html", models=[m[1] for m in models])
