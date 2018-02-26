@@ -1,0 +1,31 @@
+
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+      <meta charset="UTF-8">
+      <title>Minigo Game Listing</title>
+  </head>
+  <body>
+
+    <h1>Minigo-games</h1>
+
+    <hr>
+
+    <h3>List of models:</h3>
+
+    <table>
+    <thead>
+      <th>Name</th>
+    </thead>
+    <tbody>
+      {% for m in models %}
+      <tr>
+      <td><a href="{{ url_for('model_list', model_name=m) }}">{{ m }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+
+    </table>
+
+  </body>
+</html>
