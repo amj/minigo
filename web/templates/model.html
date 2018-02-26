@@ -17,9 +17,9 @@
       <th>Full</th>
     </thead>
     <tbody>
-      {% for f in files %}
+      {% for f in files[1:] %}
       <tr>
-        <td>{{ f }}</td>
+        <td>{{ f.split('/')[-1] }}</td>
         <td><a href="{{ url_for('game_view', filename=f) }}"> SGF View </a></td>
       </tr>
       {% endfor %}
