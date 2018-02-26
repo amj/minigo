@@ -152,8 +152,6 @@ class MCTSPlayerMixin:
         else:
             cdf = self.root.child_N.cumsum()
             cdf /= cdf[-2]  # For softpick, don't include pass.
-            import pdb
-            pdb.set_trace()
             selection = random.random()
             fcoord = cdf.searchsorted(selection)
             assert self.root.child_N[fcoord] != 0
