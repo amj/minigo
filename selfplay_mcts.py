@@ -22,7 +22,7 @@ import coords
 import go
 from gtp_wrapper import MCTSPlayer
 
-SIMULTANEOUS_LEAVES = 16
+SIMULTANEOUS_LEAVES = 8
 
 
 def play(network, readouts, resign_threshold, verbosity=0):
