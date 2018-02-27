@@ -19,6 +19,7 @@ import time
 import sgf_wrapper
 
 from gtp_wrapper import MCTSPlayer
+from tensorflow import gfile
 
 SIMULTANEOUS_LEAVES = 8
 
@@ -72,7 +73,7 @@ def play_match(black_net, white_net, games, readouts, sgf_dir, verbosity):
             if active.is_done():
                 fname = "{:d}-{:s}-vs-{:s}-{:d}.sgf".format(int(time.time()),
                                                             white_name, black_name, i)
-                with open(os.path.join(sgf_dir, fname), 'w') as _file:
+                with gfile.GFile(os.path.join(sgf_dir, fname), 'w') as _file:
                     sgfstr = sgf_wrapper.make_sgf(active.position.recent,
                                                   active.result_string, black_name=black_name,
                                                   white_name=white_name)
