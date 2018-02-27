@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+      <meta charset="UTF-8">
+      <title>Minigo Rating Listing</title>
+  </head>
+  <body>
+
+    <h1>Ratings as of {{ last}}
+ </h1> 
+    <h2> 
+      <a href="{{url_for('seed_ratings')}}">re-seed</a> 
+      <a href="{{url_for('rate')}}">Rate</a> 
+      <a href="{{url_for('eval')}}">Evaluation Matches</a>
+      <a href="{{url_for('index')}}">Selfplay Matches</a>
+    </h2>
+
+
+    <hr>
+
+    <table>
+    <thead>
+      <th>Name</th>
+      <th>Rating</th>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{r['player']}}</td>
+        <td>{{r['rating']}}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+
+    </table>
+
+  </body>
+</html>
