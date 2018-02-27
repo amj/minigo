@@ -24,8 +24,14 @@
       {% for r in results %}
       <tr>
         <td>{{ r.timestamp }}</td>
-        <td {% if r.b_won %} bgcolor='#bfd' {% endif %}>{{ r.player_b }}</td>
-        <td {% if not r.b_won %} bgcolor='#bfd' {% endif %}>{{ r.player_w }}</td>
+        <td {% if r.b_won %} bgcolor='#bfd' {% endif %}>
+          <a href="{{url_for('models_eval_games', model_name=r.player_b)}}">
+            {{ r.player_b }}
+          </a></td>
+        <td {% if not r.b_won %} bgcolor='#bfd' {% endif %}>
+          <a href="{{url_for('models_eval_games', model_name=r.player_w)}}">
+            {{ r.player_w }}
+          </a></td>
         <td><a href="{{ url_for('game_view', filename=r.game_loc) }}"> SGF View </a></td>
       </tr>
       {% endfor %}

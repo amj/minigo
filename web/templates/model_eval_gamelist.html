@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+      <meta charset="UTF-8">
+      <title>Minigo Game Listing</title>
+  </head>
+  <body>
+
+    <h1>Results for {{ model_name }} </h1>
+    <h2> {{ won_count }} / {{ tot_count }} </h2>
+    ( {{as_white}} / {{tot_count}} as white) <br>
+    <strong>{{ won_higher }} / {{ vs_higher }}</strong> vs higher opponents <br>
+    <strong> {{ won_lower }} / {{ vs_lower }} </strong> vs lower opponents <br>
+
+    <hr>
+
+    <table>
+     <thead>
+      <th>Opponent</th>
+      <th>Winrate</th>
+    </thead>
+
+    <tbody>
+      {% for opp in opp_totals.keys()|sort|reverse %}
+      <tr>
+        <td><a href="{{url_for('models_eval_games', model_name=opp)}}">{{ opp }}</a></td>
+        <td> {{opp_wins[opp] }} / {{ opp_totals[opp] }} </td>
+      </tr>
+      {% endfor %}
+
+    </tbody>
+    </table>
+
+    <hr>
+
+    <table>
+    <thead>
+      <th>Time</th>
+      <th>Black</th>
+      <th>White</th>
+      <th>View</th>
+    </thead>
+
+
+    <tbody>
+      {% for r in games %}
+      <tr>
+        <td>{{ r.timestamp }}</td>
+        <td {% if r.b_won %} bgcolor='#bfd' {% endif %}>{{ r.player_b }}</td>
+        <td {% if not r.b_won %} bgcolor='#bfd' {% endif %}>{{ r.player_w }}</td>
+        <td><a href="{{ url_for('game_view', filename=r.game_loc) }}"> SGF View </a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+
+    </table>
+
+  </body>
+</html>

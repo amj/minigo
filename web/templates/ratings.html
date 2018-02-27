@@ -26,7 +26,10 @@
     <tbody>
       {% for r in rows %}
       <tr>
-        <td>{{r['player']}}</td>
+        <td>
+          <a href="{{url_for('models_eval_games', model_name=r.player)}}">
+            {{ r.player }}
+          </a></td>
         <td>{{r['rating']}}</td>
       </tr>
       {% endfor %}
