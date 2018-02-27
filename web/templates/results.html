@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head lang="en">
+      <meta charset="UTF-8">
+      <title>Minigo Game Listing</title>
+  </head>
+  <body>
+
+    <h1>Results</h1>
+
+    <hr>
+
+    <table>
+    <thead>
+      <th>Time</th>
+      <th>B</th>
+      <th>W</th>
+      <th>Res</th>
+      <th>view</th>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td>{{ r.timestamp }}</td>
+        <td {% if r.b_won %} bgcolor='#bfd' {% endif %}>{{ r.player_b }}</td>
+        <td {% if not r.b_won %} bgcolor='#bfd' {% endif %}>{{ r.player_w }}</td>
+        <td><a href="{{ url_for('game_view', filename=r.game_loc) }}"> SGF View </a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+
+    </table>
+
+  </body>
+</html>
