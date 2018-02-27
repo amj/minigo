@@ -1,5 +1,5 @@
 import sys
-sys.path.insert(0, '.')  # shitty hack.
+sys.path.insert(0, '.')  # hack to make it run from minigo/ dir.
 
 from flask import Flask, g
 from werkzeug.contrib.cache import SimpleCache
@@ -9,6 +9,8 @@ from tensorflow import gfile
 import os
 import re
 import sqlite3
+from datetime import datetime
+from tqdm import tqdm
 
 import rl_loop
 
@@ -18,6 +20,17 @@ cache = SimpleCache()  # TODO(amj): replace with memcached
 DATABASE = 'web/test.db'
 EVAL_DIR = os.path.join(rl_loop.BASE_DIR, 'eval')
 
+rl_loop.print_flags()
+print("Looking for games in:", EVAL_DIR)
+
+
+
+def expected(a, b):
+    return 1 / (1 + 10 ** ((b - a) / 400))
+
+
+def elo(prior, expected, score, k=50):
+    return prior + k * (score - expected)
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -40,11 +53,68 @@ def query_db(query, args=(), one=False):
     cur.close()
     return (rv[0] if rv else None) if one else rv
 
+@app.route('/seed')
+def seed_ratings():
+    players_w = [p['player_w'] for p in query_db('select player_w from results group by player_w')]
+    players_b = [p['player_b'] for p in query_db('select player_b from results group by player_b')]
+    p_w_ratings = [row['player'] for row in query_db('select player from ratings group by player')]
+    print(p_w_ratings)
+
+    unrated = set(players_w).union(set(players_b)) - set(p_w_ratings)
+    print("Getting new rating objs: ", unrated)
+
+    db = get_db()
+    for p in unrated:
+        db.execute('insert into ratings (player, rating, timestamp) values (?, ?, ?)', (p, 1500, 0))
+    db.commit() 
+    return redirect(url_for('ratings'))
+
+@app.route('/ratings')
+def ratings():
+    results = [row for row in query_db('select * from ratings order by rating desc')]
+    last = query_db('select timestamp from ratings order by timestamp desc', one=True)['timestamp']
+    last = datetime.fromtimestamp(last).strftime("%Y-%m-%d %H:%M")
+    return render_template("ratings.html", rows=results, last=last) 
+
+@app.route('/rate')
+def rate():
+    db = get_db()
+    last = query_db('select timestamp from ratings order by timestamp desc', one=True)['timestamp']
+
+    ids_by_player = {row['player']:row['id'] for row in query_db('select id, player from ratings')}
+
+    ratings = {}
+    for row in query_db('select distinct player, timestamp, rating from ratings order by timestamp asc, player desc'):
+        ratings[row['player']] = row['rating']
+
+    for row in query_db("select * from results where timestamp > ? order by timestamp asc limit 100", [last,]):
+        pb = row['player_b']
+        pw = row['player_w']
+        if row['timestamp'] > last:
+            last = row['timestamp']
+
+        res = 1 if row['b_won'] else 0
+
+        ratings[pb] = elo(ratings[pb], expected(ratings[pb], ratings[pw]), res)
+        ratings[pw] = elo(ratings[pw], expected(ratings[pw], ratings[pb]), 1 if res == 0 else 0)
+
+        print("{} (b) vs {} (w), {}.  b now: {:.2f} w now: {:.2f}".format(
+            pb, pw, res, ratings[pb], ratings[pw]))
+
+    for player, rating in ratings.items():
+        db.execute('update ratings set (player, rating, timestamp) = (?, ?, ?) where id=?', (
+            player, rating, last, ids_by_player[player]))
+    db.commit()
+           
+
+    return redirect(url_for('ratings'))
+
 
 @app.route('/update')
 def update_results():
     new_games = gfile.Glob(os.path.join(EVAL_DIR, '*.sgf'))
-    for f in new_games:
+    db = get_db()
+    for f in tqdm(reversed(new_games)):
         with gfile.Open(f, 'r') as _f:
             data = _f.read()
         try:
@@ -60,19 +130,16 @@ def update_results():
             continue
 
         timestamp = os.path.basename(f).split('-')[0]
-        db = get_db()
-        print("inserting:(player_b, player_w, game_loc, timestamp, b_won)\n( {}, {}, {}, {}, {} )".format(
-            w, b, f,
-            timestamp,
-            res.lower() == 'b'))
 
-        db.execute('insert into results (player_b, player_w, game_loc, timestamp, b_won) values (?, ?, ?, ?, ?)',
-                   (w, b, f,
-                    timestamp,
-                    res.lower() == 'b'))
+        try:
+            db.execute('insert into results (player_b, player_w, game_loc, timestamp, b_won) values (?, ?, ?, ?, ?)',
+                    (b, w, f, timestamp, res.lower() == 'b')) 
+            db.commit()
+        except:
+            print("Caught-up at:", timestamp)
+            break
 
-    db.commit()
-    return 'Yay'
+    return redirect(url_for('eval'))
 
 
 @app.route('/')
@@ -91,8 +158,8 @@ def eval():
     return render_template("results.html", results=res)
 
 
-@app.route("/model/<path:model_name>")
-def model_list(model_name):
+@app.route("/games/<path:model_name>")
+def game_list(model_name):
     games = cache.get(model_name)
     if games is None:
         games = gfile.Glob(
