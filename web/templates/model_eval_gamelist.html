@@ -7,7 +7,7 @@
   <body>
 
     <h1>Results for {{ model_name }} </h1>
-    <h2> {{ won_count }} / {{ tot_count }} </h2>
+    <h2> {{ won_count }} / {{ tot_count }} {{ '%0.2f' % (100 *won_count / tot_count)|float }}% </h2>
     ( {{as_white}} / {{tot_count}} as white) <br>
     <strong>{{ won_higher }} / {{ vs_higher }}</strong> vs higher opponents <br>
     <strong> {{ won_lower }} / {{ vs_lower }} </strong> vs lower opponents <br>

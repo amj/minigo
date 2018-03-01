@@ -99,7 +99,7 @@ def rate():
     for row in query_db('select distinct player, timestamp, rating from ratings order by timestamp asc, player desc'):
         ratings[row['player']] = row['rating']
 
-    for row in query_db("select * from results where timestamp > ? order by timestamp asc limit 100", [last, ]):
+    for row in query_db("select * from results where timestamp > ? order by timestamp asc limit 1000", [last, ]):
         pb = row['player_b']
         pw = row['player_w']
         if row['timestamp'] > last:
