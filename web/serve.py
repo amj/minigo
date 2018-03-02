@@ -167,7 +167,7 @@ def index():
     if models is None:
         models = rl_loop.get_models()
         cache.set('models', models, timeout=10*60)
-    return render_template("index.html", models=[m[1] for m in models])
+    return render_template("index.html", models=[m[1] for m in models], bucket=rl_loop.BASE_DIR)
 
 
 @app.route('/eval/<model_name>')
