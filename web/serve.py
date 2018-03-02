@@ -3,7 +3,7 @@ sys.path.insert(0, '.')  # hack to make it run from minigo/ dir.
 
 from flask import Flask, g
 from werkzeug.contrib.cache import SimpleCache
-from flask import Flask, request, render_template, redirect, abort, url_for
+from flask import Flask, request, render_template, redirect, abort, url_for, jsonify
 
 from tensorflow import gfile
 import os
@@ -84,6 +84,13 @@ def ratings():
         'select timestamp from ratings order by timestamp desc', one=True)['timestamp']
     last = datetime.fromtimestamp(last).strftime("%Y-%m-%d %H:%M")
     return render_template("ratings.html", rows=results, last=last)
+
+
+@app.route('/ratings.json')
+def ratings_json():
+    results = [(shipname.detect_model_num(row['player']), row['rating']) for row in query_db(
+        'select * from ratings order by rating desc')]
+    return jsonify(results)
 
 
 @app.route('/rate')
@@ -217,7 +224,7 @@ def models_eval_games(model_name):
 @app.route('/eval')
 def eval():
     res = [row for row in query_db(
-        'select * from results order by timestamp desc')]
+        'select * from results order by timestamp desc limit 1000')]
     return render_template("results.html", results=res)
 
 
