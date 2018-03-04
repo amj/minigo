@@ -12,6 +12,7 @@ import sqlite3
 from datetime import datetime
 from tqdm import tqdm
 import shipname
+import choix
 
 import rl_loop
 
@@ -33,12 +34,34 @@ def elo(prior, expected, score, k=50):
     return prior + k * (score - expected)
 
 
+def row_as_ilsr_data(row):
+     b_model = shipname.detect_model_num(row['player_b'])
+     w_model = shipname.detect_model_num(row['player_w'])
+     return (b_model, w_model) if row['b_won'] else (w_model, b_model)
+
+
 def get_db():
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
         db.row_factory = sqlite3.Row
     return db
+
+
+@app.route('/ratings2.json')
+def ilsr_ratings():
+    db = get_db()
+
+    rows = [row for row in db.execute('select * from results')]
+    players = set([row['player_w'] for row in rows]).union(
+        set([row['player_b'] for row in rows]))
+    models = {shipname.detect_model_num(p): p for p in players}
+
+    data = [row_as_ilsr_data(row) for row in rows]
+    params = choix.ilsr_pairwise(max(models.keys())+1, data, alpha=0.0001)
+    ratings = [(model_num, params[model_num], models[model_num])
+               for model_num in models.keys()]
+    return jsonify(ratings)
 
 
 @app.teardown_appcontext
