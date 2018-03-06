@@ -50,6 +50,9 @@ def get_db():
 
 @app.route('/ratings2.json')
 def ilsr_ratings():
+    ratings = cache.get('ratings')
+    if ratings is not None:
+        return jsonify(ratings)
     db = get_db()
 
     rows = [row for row in db.execute('select * from results')]
@@ -58,9 +61,11 @@ def ilsr_ratings():
     models = {shipname.detect_model_num(p): p for p in players}
 
     data = [row_as_ilsr_data(row) for row in rows]
-    params = choix.ilsr_pairwise(max(models.keys())+1, data, alpha=0.0001)
-    ratings = [(model_num, params[model_num], models[model_num])
+    params = choix.ilsr_pairwise(max(models.keys())+1, data, alpha=0.00001)
+    min_p = min(params)
+    ratings = [(model_num, params[model_num]-min_p + 1, models[model_num])
                for model_num in models.keys()]
+    cache.set('ratings', ratings, timeout=10*60)
     return jsonify(ratings)
 
 
