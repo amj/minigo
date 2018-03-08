@@ -189,15 +189,6 @@ def update_results():
     return redirect(url_for('eval'))
 
 
-@app.route('/')
-def index():
-    models = cache.get('models')
-    if models is None:
-        models = rl_loop.get_models()
-        cache.set('models', models, timeout=10*60)
-    return render_template("index.html", models=[m[1] for m in models], bucket=rl_loop.BASE_DIR)
-
-
 @app.route('/eval/<model_name>')
 def models_eval_games(model_name):
     if not model_name:
@@ -272,3 +263,12 @@ def game_view(filename):
     with gfile.GFile(filename, 'r') as f:
         data = f.read()
     return render_template("game.html", data=data)
+
+
+@app.route('/')
+def index():
+    models = cache.get('models')
+    if models is None:
+        models = rl_loop.get_models()
+        cache.set('models', models, timeout=10*60)
+    return render_template("index.html", models=[m[1] for m in models], bucket=rl_loop.BASE_DIR)
