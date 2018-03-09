@@ -13,6 +13,8 @@ import os
 from datetime import datetime
 from tqdm import tqdm
 import subprocess
+from threading import Lock
+import functools
 
 import main
 
@@ -26,40 +28,62 @@ GTP_COMMAND = ["python",  '-u',  # turn off buffering
                "main.py", "gtp",
                "--load-file", MODEL_PATH,
                "--readouts", "1000",
-               "-v", "3"]
+               "-v", "2"]
 
 p = subprocess.Popen(GTP_COMMAND,
                      stdin=subprocess.PIPE,
                      stdout=subprocess.PIPE,
                      stderr=subprocess.PIPE)
 
-
-@app.route("/stderr-get")
-def stderr():
-    def stream_stderr(proc):
-        for line in proc.stderr:
-            yield line
-    return Response(stream_with_context(stream_stderr(p)))
+stdout_thread = None
+stdout_thread_lock = Lock()
+stderr_thread = None
+stderr_thread_lock = Lock()
 
 
-@app.route("/stdout-get")
-def stdout():
-    def stream_stdout(proc):
-        for line in proc.stdout:
-            yield line
-    return Response(stream_with_context(stream_stdout(p)))
+def std_bg_thread(stream):
+    for line in p.__getattribute__(stream):
+        print("E -> C ", line)
+        socketio.send(str(line), namespace='/' + stream)
+        socketio.sleep(0.1)
+    print(stream, "bg_thread died")
+
+
+@socketio.on('connect', namespace='/stdout')
+def stdout_connected():
+    global stdout_thread
+    with stdout_thread_lock:
+        if stdout_thread is None:
+            stdout_thread = socketio.start_background_task(
+                target=functools.partial(std_bg_thread, 'stdout'))
+    print("stdout connected")
 
 
 @socketio.on('connect', namespace='/stderr')
 def stderr_connected():
-    print("connected:")
+    global stderr_thread
+    with stderr_thread_lock:
+        if stderr_thread is None:
+            stderr_thread = socketio.start_background_task(
+                target=functools.partial(std_bg_thread, 'stderr'))
+    print("stderr connected")
+
+
+@socketio.on('connect', namespace='/stdin')
+def stdin_connected():
+    print("stdin connected")
 
 
 @socketio.on('message', namespace='/stderr')
 def stderr_message(data):
-    for line in p.stderr:
-        print("sending:", line)
-        socketio.send(line, namespace='/stderr')
+    print(data)
+
+
+@socketio.on('my event', namespace='/stdin')
+def stdin_cmd(message):
+    print("C -> E:", message['data'])
+    p.stdin.write(bytes(message['data'] + '\r\n', encoding='utf-8'))
+    p.stdin.flush()
 
 
 #@app.route('/genmove', method="POST")
