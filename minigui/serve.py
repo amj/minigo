@@ -9,6 +9,7 @@ from flask import Flask, request, render_template, redirect, abort, url_for, jso
 from flask_socketio import SocketIO
 
 from tensorflow import gfile
+import json
 import os
 from datetime import datetime
 from tqdm import tqdm
@@ -30,10 +31,16 @@ GTP_COMMAND = ["python",  '-u',  # turn off buffering
                "--readouts", "1000",
                "-v", "2"]
 
-p = subprocess.Popen(GTP_COMMAND,
-                     stdin=subprocess.PIPE,
-                     stdout=subprocess.PIPE,
-                     stderr=subprocess.PIPE)
+
+def _open_pipes():
+    return subprocess.Popen(GTP_COMMAND,
+                            stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE)
+
+
+p = None
+p = _open_pipes()
 
 stdout_thread = None
 stdout_thread_lock = Lock()
@@ -43,8 +50,10 @@ stderr_thread_lock = Lock()
 
 def std_bg_thread(stream):
     for line in p.__getattribute__(stream):
+        line = line.decode().strip()
         print("E -> C ", line)
-        socketio.send(str(line), namespace='/' + stream)
+        socketio.send(json.dumps({stream: line}),
+                      namespace='/' + stream, json=True)
         socketio.sleep(0.1)
     print(stream, "bg_thread died")
 
@@ -71,6 +80,10 @@ def stderr_connected():
 
 @socketio.on('connect', namespace='/stdin')
 def stdin_connected():
+    global p
+    if p is None:
+        p = _open_pipes()
+
     print("stdin connected")
 
 
@@ -82,8 +95,12 @@ def stderr_message(data):
 @socketio.on('my event', namespace='/stdin')
 def stdin_cmd(message):
     print("C -> E:", message['data'])
-    p.stdin.write(bytes(message['data'] + '\r\n', encoding='utf-8'))
-    p.stdin.flush()
+    global p
+    try:
+        p.stdin.write(bytes(message['data'] + '\r\n', encoding='utf-8'))
+        p.stdin.flush()
+    except BrokenPipeError:
+        p = _open_pipes()
 
 
 #@app.route('/genmove', method="POST")
