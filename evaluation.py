@@ -34,7 +34,6 @@ def play_match(black_net, white_net, games, readouts, sgf_dir, verbosity):
     readouts: number of readouts to perform for each step in each game.
     """
 
-    # For n games, we create lists of n black and n white players
     black = MCTSPlayer(
         black_net, verbosity=verbosity, two_player_mode=True, num_parallel=SIMULTANEOUS_LEAVES)
     white = MCTSPlayer(
