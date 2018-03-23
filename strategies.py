@@ -196,6 +196,9 @@ class MCTSPlayerMixin:
             path += " (game over) %0.1f" % node.position.score()
         return path
 
+    def is_done(self):
+        return self.result != 0 or self.root.is_done()
+
     def should_resign(self):
         '''Returns true if the player resigned.  No further moves should be played'''
         return self.root.Q_perspective < self.resign_threshold
