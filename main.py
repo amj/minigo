@@ -125,7 +125,7 @@ def evaluate(
 
     with timer("%d games" % games):
         evaluation.play_match(
-            black_net, white_net, games, readouts, verbose)
+            black_net, white_net, games, readouts, output_dir, verbose)
 
 
 def selfplay(
