@@ -25,7 +25,7 @@ echo board_size: $BOARD_SIZE
 
 python3 rl_loop.py selfplay \
   --resign-threshold=0.88 \
-  --readouts=800
+  --readouts=900
 
 
 echo Finished a set of games!
