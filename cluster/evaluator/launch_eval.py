@@ -51,11 +51,11 @@ def make_pairs(model_num=0):
         launch_eval(model_num, model_num - i)
     for i in range(10, 20, 2):
         launch_eval(model_num, model_num - i)
-    for i in range(20, 50, 5):
+    for i in range(20, 51, 5):
         launch_eval(model_num, model_num - i)
 
 
 if __name__ == '__main__':
-    argh.dispatch_command(make_pairs)
-    #for i in range(201, 230):
-    #    make_pairs(i)
+    #argh.dispatch_command(make_pairs)
+    for i in range(209, 240):
+        make_pairs(i)
