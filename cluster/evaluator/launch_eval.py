@@ -55,18 +55,21 @@ def zoo_loop():
     api_instance = kubernetes.client.BatchV1Api(
         kubernetes.client.ApiClient(configuration))
 
-    while len(desired_pairs) > 0:
-        cleanup_finished_jobs(api_instance)
-        r = api_instance.list_job_for_all_namespaces()
-        if len(r.items) < 200:
-            next_pair = desired_pairs.pop()
-            print("Enqueuing:", next_pair)
-            make_pairs(next_pair)
-        else:
-            print("{} jobs outstanding.".format(len(r.items)))
-
-        print("Sleeping")
-        time.sleep(30)
+    try:
+        while len(desired_pairs) > 0:
+            cleanup_finished_jobs(api_instance)
+            r = api_instance.list_job_for_all_namespaces()
+            if len(r.items) < 200:
+                next_pair = desired_pairs.pop()
+                print("Enqueuing:", next_pair)
+                make_pairs(next_pair)
+            else:
+                print("{}\t{} jobs outstanding.".format(
+                    time.strftime("%I:%M:%S %p"), len(r.items)))
+            time.sleep(30)
+    except KeyboardInterrupt:
+        print("Unfinished pairs:")
+        print(sorted(desired_pairs))
 
 
 def cleanup_finished_jobs(api):
