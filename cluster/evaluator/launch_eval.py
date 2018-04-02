@@ -50,13 +50,12 @@ def zoo_loop():
     desired_pairs = list(range(280, 293)) + list(range(10, 150))
     random.shuffle(desired_pairs)
 
-    kubernetes.config.load_kube_config()
-    configuration = kubernetes.client.Configuration()
-    api_instance = kubernetes.client.BatchV1Api(
-        kubernetes.client.ApiClient(configuration))
-
     try:
         while len(desired_pairs) > 0:
+            kubernetes.config.load_kube_config()
+            configuration = kubernetes.client.Configuration()
+            api_instance = kubernetes.client.BatchV1Api(
+                kubernetes.client.ApiClient(configuration))
             cleanup_finished_jobs(api_instance)
             r = api_instance.list_job_for_all_namespaces()
             if len(r.items) < 200:
