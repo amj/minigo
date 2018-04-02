@@ -7,10 +7,12 @@ import yaml
 import os
 import argh
 import rl_loop
+import random
+import time
 
 
 def launch_eval(black_num=0, white_num=0):
-    if black_num == 0 or white_num == 0:
+    if black_num <= 0 or white_num <= 0:
         print("Need real model numbers")
         return
 
@@ -44,6 +46,39 @@ def launch_eval(black_num=0, white_num=0):
     resp = api_instance.create_namespaced_job('default', body=job_conf)
 
 
+def zoo_loop():
+    desired_pairs = list(range(280, 293)) + list(range(10, 150))
+    random.shuffle(desired_pairs)
+
+    kubernetes.config.load_kube_config()
+    configuration = kubernetes.client.Configuration()
+    api_instance = kubernetes.client.BatchV1Api(
+        kubernetes.client.ApiClient(configuration))
+
+    while len(desired_pairs) > 0:
+        cleanup_finished_jobs(api_instance)
+        r = api_instance.list_job_for_all_namespaces()
+        if len(r.items) < 200:
+            next_pair = desired_pairs.pop()
+            print("Enqueuing:", next_pair)
+            make_pairs(next_pair)
+        else:
+            print("{} jobs outstanding.".format(len(r.items)))
+
+        print("Sleeping")
+        time.sleep(30)
+
+
+def cleanup_finished_jobs(api):
+    r = api.list_job_for_all_namespaces()
+    delete_opts = kubernetes.client.V1DeleteOptions()
+    for job in r.items:
+        if job.status.succeeded == job.spec.completions:
+            print(job.metadata.name, "finished!")
+            resp = api.delete_namespaced_job(
+                job.metadata.name, 'default', body=delete_opts)
+
+
 def make_pairs(model_num=0):
     if model_num == 0:
         return
@@ -56,6 +91,6 @@ def make_pairs(model_num=0):
 
 
 if __name__ == '__main__':
-    #argh.dispatch_command(make_pairs)
-    for i in range(209, 240):
-        make_pairs(i)
+    argh.dispatch_command(zoo_loop)
+    #for i in range(270, 280, 1):
+    #    make_pairs(i)
