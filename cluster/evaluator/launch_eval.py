@@ -4,6 +4,7 @@ sys.path.insert(0, '.')
 import jinja2
 import kubernetes
 import yaml
+import json
 import os
 import argh
 import rl_loop
@@ -47,28 +48,48 @@ def launch_eval(black_num=0, white_num=0):
 
 
 def zoo_loop():
-    desired_pairs = list(range(280, 293)) + list(range(10, 150))
+    desired_pairs = restore_pairs()
     random.shuffle(desired_pairs)
+
+    kubernetes.config.load_kube_config(persist_config=True)
+    configuration = kubernetes.client.Configuration()
+    api_instance = kubernetes.client.BatchV1Api(
+        kubernetes.client.ApiClient(configuration))
 
     try:
         while len(desired_pairs) > 0:
-            kubernetes.config.load_kube_config()
-            configuration = kubernetes.client.Configuration()
-            api_instance = kubernetes.client.BatchV1Api(
-                kubernetes.client.ApiClient(configuration))
             cleanup_finished_jobs(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 200:
+            if len(r.items) < 20:
                 next_pair = desired_pairs.pop()
                 print("Enqueuing:", next_pair)
-                make_pairs(next_pair)
+                try:
+                    make_pairs(next_pair)
+                except:
+                    desired_pairs.append(next_pair)
+                    raise
+                save_pairs(sorted(desired_pairs))
+
             else:
                 print("{}\t{} jobs outstanding.".format(
                     time.strftime("%I:%M:%S %p"), len(r.items)))
             time.sleep(30)
-    except KeyboardInterrupt:
+    except:
         print("Unfinished pairs:")
         print(sorted(desired_pairs))
+        save_pairs(sorted(desired_pairs))
+        raise
+
+
+def restore_pairs():
+    with open('unscheduled_pairs.json') as f:
+        pairs = json.loads(f.read())
+    return pairs
+
+
+def save_pairs(pairs):
+    with open('unscheduled_pairs.json', 'w') as f:
+        json.dump(pairs, f)
 
 
 def cleanup_finished_jobs(api):
