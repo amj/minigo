@@ -49,7 +49,7 @@ def launch_eval(black_num=0, white_num=0):
 
 def zoo_loop():
     desired_pairs = restore_pairs()
-    random.shuffle(desired_pairs)
+    #random.shuffle(desired_pairs)
 
     kubernetes.config.load_kube_config(persist_config=True)
     configuration = kubernetes.client.Configuration()
