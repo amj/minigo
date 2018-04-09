@@ -49,7 +49,7 @@ def launch_eval(black_num=0, white_num=0):
 
 def zoo_loop():
     desired_pairs = restore_pairs()
-    #random.shuffle(desired_pairs)
+    last_model_queued = restore_last_model()
 
     kubernetes.config.load_kube_config(persist_config=True)
     configuration = kubernetes.client.Configuration()
@@ -58,6 +58,14 @@ def zoo_loop():
 
     try:
         while len(desired_pairs) > 0:
+            last_model = rl_loop.get_latest_model()[0]
+            if last_model_queued < last_model:
+                print("Adding models {} to {} to be scheduled".format(
+                    last_model_queued+1, last_model))
+                desired_pairs += list(reversed(range(last_model_queued+1, last_model+1)))
+                last_model_queued = last_model
+                save_last_model(last_model)
+
             cleanup_finished_jobs(api_instance)
             r = api_instance.list_job_for_all_namespaces()
             if len(r.items) < 20:
@@ -69,6 +77,7 @@ def zoo_loop():
                     desired_pairs.append(next_pair)
                     raise
                 save_pairs(sorted(desired_pairs))
+                save_last_model(last_model)
 
             else:
                 print("{}\t{} jobs outstanding.".format(
@@ -78,6 +87,7 @@ def zoo_loop():
         print("Unfinished pairs:")
         print(sorted(desired_pairs))
         save_pairs(sorted(desired_pairs))
+        save_last_model(last_model)
         raise
 
 
@@ -90,6 +100,17 @@ def restore_pairs():
 def save_pairs(pairs):
     with open('unscheduled_pairs.json', 'w') as f:
         json.dump(pairs, f)
+
+
+def save_last_model(model):
+    with open('last_model.json', 'w') as f:
+        json.dump(model, f)
+
+
+def restore_last_model():
+    with open('last_model.json') as f:
+        last_model = json.loads(f.read())
+    return last_model
 
 
 def cleanup_finished_jobs(api):
