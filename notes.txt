@@ -16,3 +16,5 @@ to move 30 (from 31, because odd number = bias against black)
 
 7. during v354 (for 355) change steps per generation to 1M from 2M, shuffle
 buffer down to 100k
+
+8. 23.2M steps -- change l2_strength to 0.0002 (from 0.0001)
