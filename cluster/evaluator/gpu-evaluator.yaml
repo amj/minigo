@@ -4,7 +4,7 @@ metadata:
   name: minigo-gpu-evaluator-{{bnum}}-{{wnum}}
 spec:
   parallelism: 2
-  completions: 3
+  completions: 4
   template:
     metadata:
       name: gpu-evaluator

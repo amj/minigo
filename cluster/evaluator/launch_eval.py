@@ -62,17 +62,18 @@ def zoo_loop():
             if last_model_queued < last_model:
                 print("Adding models {} to {} to be scheduled".format(
                     last_model_queued+1, last_model))
-                desired_pairs += list(reversed(range(last_model_queued+1, last_model+1)))
+                for m in reversed(range(last_model_queued+1, last_model+1)):
+                    desired_pairs += make_pairs_for_model(m)
                 last_model_queued = last_model
                 save_last_model(last_model)
 
             cleanup_finished_jobs(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 20:
-                next_pair = desired_pairs.pop()
+            if len(r.items) < 15:
+                next_pair = desired_pairs.pop()  # take our pair off
                 print("Enqueuing:", next_pair)
                 try:
-                    make_pairs(next_pair)
+                    launch_eval(*next_pair)
                 except:
                     desired_pairs.append(next_pair)
                     raise
@@ -83,6 +84,7 @@ def zoo_loop():
                 print("{}\t{} jobs outstanding.".format(
                     time.strftime("%I:%M:%S %p"), len(r.items)))
             time.sleep(30)
+        print("All pairs finished")
     except:
         print("Unfinished pairs:")
         print(sorted(desired_pairs))
@@ -92,13 +94,13 @@ def zoo_loop():
 
 
 def restore_pairs():
-    with open('unscheduled_pairs.json') as f:
+    with open('closest_pairs.json') as f:
         pairs = json.loads(f.read())
     return pairs
 
 
 def save_pairs(pairs):
-    with open('unscheduled_pairs.json', 'w') as f:
+    with open('closest_pairs.json', 'w') as f:
         json.dump(pairs, f)
 
 
@@ -123,15 +125,17 @@ def cleanup_finished_jobs(api):
                 job.metadata.name, 'default', body=delete_opts)
 
 
-def make_pairs(model_num=0):
+def make_pairs_for_model(model_num=0):
     if model_num == 0:
         return
-    for i in range(1, 10):
-        launch_eval(model_num, model_num - i)
-    for i in range(10, 20, 2):
-        launch_eval(model_num, model_num - i)
-    for i in range(20, 51, 5):
-        launch_eval(model_num, model_num - i)
+    pairs = []
+    pairs += [[model_num, model_num - i]
+              for i in range(1, 10)if model_num - i > 0]
+    pairs += [[model_num, model_num - i]
+              for i in range(10, 20, 2)if model_num - i > 0]
+    pairs += [[model_num, model_num - i]
+              for i in range(20, 51, 5)if model_num - i > 0]
+    return pairs
 
 
 if __name__ == '__main__':
