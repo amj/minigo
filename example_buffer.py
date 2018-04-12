@@ -25,6 +25,8 @@ LOCAL_DIR = "data/"
 def pick_examples_from_tfrecord(filename, samples_per_game=4):
     protos = [p for p in
               tf.python_io.tf_record_iterator(filename, READ_OPTS)]
+    if len(protos) < 20:
+        return []
     choices = random.sample(protos, samples_per_game)
 
     def make_example(protostring):
