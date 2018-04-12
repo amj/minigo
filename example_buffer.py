@@ -1,4 +1,4 @@
-from tensorflow import gfile
+import tensorflow as tf
 import os
 import random
 from tqdm import tqdm
@@ -11,6 +11,9 @@ import subprocess
 from utils import timer
 import time
 import preprocessing
+import argh
+import argparse
+import datetime as dt
 
 
 # 1 for ZLIB!  Make this match preprocessing.
@@ -40,6 +43,10 @@ def choose(g, samples_per_game=4):
 
 def file_timestamp(filename):
     return int(os.path.basename(filename).split('-')[0])
+
+
+def _ts_to_str(timestamp):
+    return dt.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class ExampleBuffer():
@@ -74,16 +81,27 @@ class ExampleBuffer():
 
             choices = [(t, ex) for ex in pick_examples_from_tfrecord(
                 game, samples_per_game)]
-            if len(self.examples) > self.max_size:
+            if self.count > self.max_size:
                 self.examples = self.examples[samples_per_game:]
             self.examples.extend(choices)
 
     def flush(self, path):
+        print(self)
         preprocessing.write_tf_examples(path, [ex[1] for ex in self.examples])
+
+    @property
+    def count(self):
+        return len(self.examples)
+
+    def __str__(self):
+        return "ExampleBuffer: {} positions sampled from {} to {}".format(
+            self.count,
+            _ts_to_str(self.examples[0][0]),
+            _ts_to_str(self.examples[-1][0]))
 
 
 def files_for_model(model):
-    return gfile.Glob(os.path.join(LOCAL_DIR, model[1], '*.zz'))
+    return tf.gfile.Glob(os.path.join(LOCAL_DIR, model[1], '*.zz'))
 
 
 def smart_rsync(from_model_num=0, source_dir=rl_loop.SELFPLAY_DIR, dest_dir=LOCAL_DIR):
@@ -91,9 +109,13 @@ def smart_rsync(from_model_num=0, source_dir=rl_loop.SELFPLAY_DIR, dest_dir=LOCA
     models = [m for m in rl_loop.get_models() if m[0] >= from_model_num]
     for m in models:
         _ensure_dir_exists(os.path.join(LOCAL_DIR, m[1]))
-        subprocess.call(['gsutil', '-m', 'rsync',
-                         os.path.join(source_dir, m[1]), os.path.join(dest_dir, m[1])],
-                        stderr=open('.rsync_log', 'ab'))
+        _rsync_dir(os.path.join(
+            source_dir, m[1]), os.path.join(dest_dir, m[1]))
+
+
+def _rsync_dir(source_dir, dest_dir):
+    subprocess.call(['gsutil', '-m', 'rsync', source_dir, dest_dir],
+                    stderr=open('.rsync_log', 'ab'))
 
 
 def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
@@ -118,12 +140,35 @@ def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
             new_files = list(
                 tqdm(map(files_for_model, models[-2:]), total=len(models)))
             buf.update(list(itertools.chain(*new_files)))
-            print("Buf at {}/{}.  Sleeping".format(len(buf.examples), bufsize))
-            time.sleep(5*60)
+            print(self)
         latest = rl_loop.get_latest_model()
 
         print("New model!", latest[1], "!=", models[-1][1])
-        buf.flush(os.path.join(write_dir, str(latest[0]+1), '.tfrecord.zz'))
+        buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
+
+
+def make_chunk_for(output_dir
+                   game_dir=rl_loop.SELFPLAY_DIR,
+                   model_num=1,
+                   positions=dual_net.EXAMPLES_PER_GENERATION,
+                   threads=8
+                   samples_per_game=4):
+    models = {k: v for k, v in rl_loop.get_models()}
+    buf = ExampleBuffer(positions)
+    cur_model = model_num - 1
+    files = []
+    while len(files) < (positions * samples_per_game) and cur_model >= 0:
+        local_model_dir = os.path.join(LOCAL_DIR, models[cur_model])
+        if not gfile.Exists(local_model_dir):
+            print("Rsyncing", models[cur_model])
+            _rsync_dir(os.path.join(
+                game_dir, models[cur_model]), local_model_dir)
+        files += gfile.Glob(os.path.join(local_model_dir, '*.zz'))
+        cur_model -= 1
+
+    buf.parallel_fill(files, samples_per_game)
+    print(buf)
+    buf.flush(os.path.join(output_dir, str(model_num) + '.tfrecord.zz'))
 
 
 def _ensure_dir_exists(directory):
@@ -133,7 +178,7 @@ def _ensure_dir_exists(directory):
 
 
 parser = argparse.ArgumentParser()
-argh.add_commands(parser, [loop, smart_rsync])
+argh.add_commands(parser, [loop, smart_rsync, make_chunk_for])
 
 if __name__ == "__main__":
     argh.dispatch(parser)
