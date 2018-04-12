@@ -108,12 +108,12 @@ def smart_rsync(from_model_num=0, source_dir=rl_loop.SELFPLAY_DIR, dest_dir=LOCA
     from_model_num = 0 if from_model_num < 0 else from_model_num
     models = [m for m in rl_loop.get_models() if m[0] >= from_model_num]
     for m in models:
-        _ensure_dir_exists(os.path.join(LOCAL_DIR, m[1]))
         _rsync_dir(os.path.join(
             source_dir, m[1]), os.path.join(dest_dir, m[1]))
 
 
 def _rsync_dir(source_dir, dest_dir):
+    _ensure_dir_exists(dest_dir)
     subprocess.call(['gsutil', '-m', 'rsync', source_dir, dest_dir],
                     stderr=open('.rsync_log', 'ab'))
 
@@ -147,11 +147,11 @@ def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
         buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
 
 
-def make_chunk_for(output_dir
+def make_chunk_for(output_dir=LOCAL_DIR,
                    game_dir=rl_loop.SELFPLAY_DIR,
                    model_num=1,
                    positions=dual_net.EXAMPLES_PER_GENERATION,
-                   threads=8
+                   threads=8,
                    samples_per_game=4):
     models = {k: v for k, v in rl_loop.get_models()}
     buf = ExampleBuffer(positions)
@@ -159,11 +159,11 @@ def make_chunk_for(output_dir
     files = []
     while len(files) < (positions * samples_per_game) and cur_model >= 0:
         local_model_dir = os.path.join(LOCAL_DIR, models[cur_model])
-        if not gfile.Exists(local_model_dir):
+        if not tf.gfile.Exists(local_model_dir):
             print("Rsyncing", models[cur_model])
             _rsync_dir(os.path.join(
                 game_dir, models[cur_model]), local_model_dir)
-        files += gfile.Glob(os.path.join(local_model_dir, '*.zz'))
+        files += tf.gfile.Glob(os.path.join(local_model_dir, '*.zz'))
         cur_model -= 1
 
     buf.parallel_fill(files, samples_per_game)
