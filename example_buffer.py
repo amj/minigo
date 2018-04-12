@@ -132,6 +132,8 @@ def _ensure_dir_exists(directory):
     os.makedirs(directory, exist_ok=True)
 
 
+parser = argparse.ArgumentParser()
+argh.add_commands(parser, [loop, smart_rsync])
+
 if __name__ == "__main__":
-    argh.dispatch(loop)
-    pass
+    argh.dispatch(parser)
