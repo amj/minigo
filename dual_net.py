@@ -89,6 +89,10 @@ class DualNetworkTrainer():
 
     def train(self, tf_records, init_from=None, num_steps=None,
               logging_freq=100, verbosity=1):
+        """
+        Train a model on the set of records given by tf_records.
+        tf_records will *not* be filtered.
+        """
         logdir = os.path.join(
             self.logdir, 'train') if self.logdir is not None else None
 
@@ -98,7 +102,7 @@ class DualNetworkTrainer():
             num_steps = EXAMPLES_PER_GENERATION // TRAIN_BATCH_SIZE
         with self.sess.graph.as_default():
             input_tensors = preprocessing.get_input_tensors(
-                TRAIN_BATCH_SIZE, tf_records)
+                TRAIN_BATCH_SIZE, tf_records, filter_amount=1.0)
             output_tensors = dual_net(input_tensors, TRAIN_BATCH_SIZE,
                                       train_mode=True, **self.hparams)
             train_tensors = train_ops(

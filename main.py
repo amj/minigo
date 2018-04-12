@@ -80,8 +80,8 @@ def bootstrap(save_file):
     dual_net.DualNetworkTrainer(save_file).bootstrap()
 
 
-def train(chunk_dir, save_file, load_file=None, generation_num=0,
-          logdir=None, num_steps=None, verbosity=1):
+def train(chunk_dir, save_file, load_file=None,
+          logdir=None, num_steps=0, verbosity=1):
     tf_records = sorted(gfile.Glob(os.path.join(chunk_dir, '*.tfrecord.zz')))
     tf_records = tf_records[-1 * (WINDOW_SIZE // EXAMPLES_PER_RECORD):]
 
