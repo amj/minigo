@@ -10,6 +10,7 @@ import dual_net
 import subprocess
 from utils import timer
 import time
+import preprocessing
 
 
 # 1 for ZLIB!  Make this match preprocessing.
@@ -62,11 +63,15 @@ class ExampleBuffer():
         new_games is list of .tfrecord.zz files of new games
         """
         new_games.sort(key=lambda f: os.path.basename(f))
-        for game in tqdm(new_games):
+        first_new_game = None
+        for i, game in enumerate(tqdm(new_games)):
             t = file_timestamp(game)
             if t <= self.examples[-1][0]:
                 continue
-            print("New game:", os.path.basename(game))
+            elif first_new_game is None:
+                first_new_game = i
+                print("Found {}/{} new games".format(len(new_games)-i, len(new_games)))
+
             choices = [(t, ex) for ex in pick_examples_from_tfrecord(
                 game, samples_per_game)]
             if len(self.examples) > self.max_size:
@@ -74,7 +79,7 @@ class ExampleBuffer():
             self.examples.extend(choices)
 
     def flush(self, path):
-        preprocessing.write_tf_examples(path, self.examples)
+        preprocessing.write_tf_examples(path, [ex[1] for ex in self.examples])
 
 
 def files_for_model(model):
@@ -107,19 +112,18 @@ def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
         buf.parallel_fill(list(itertools.chain(*files)))
 
         print("Filled buffer, watching for new games")
-
         while rl_loop.get_latest_model()[0] == models[-1][0]:
             with timer("Rsync"):
                 smart_rsync(models[-1][0] - 2)
             new_files = list(
                 tqdm(map(files_for_model, models[-2:]), total=len(models)))
             buf.update(list(itertools.chain(*new_files)))
-            print("Sleeping")
+            print("Buf at {}/{}.  Sleeping".format(len(buf.examples), bufsize))
             time.sleep(5*60)
         latest = rl_loop.get_latest_model()
 
         print("New model!", latest[1], "!=", models[-1][1])
-        buf.flush(os.path.join(write_dir, str(latest[0]+1)))
+        buf.flush(os.path.join(write_dir, str(latest[0]+1), '.tfrecord.zz'))
 
 
 def _ensure_dir_exists(directory):
