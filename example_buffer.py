@@ -168,7 +168,8 @@ def make_chunk_for(output_dir=LOCAL_DIR,
         files += tf.gfile.Glob(os.path.join(local_model_dir, '*.zz'))
         cur_model -= 1
 
-    buf.parallel_fill(files, samples_per_game)
+    buf.parallel_fill(files, threads=threads,
+                      samples_per_game=samples_per_game)
     print(buf)
     buf.flush(os.path.join(output_dir, str(model_num) + '.tfrecord.zz'))
 
