@@ -119,7 +119,7 @@ def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
         latest = rl_loop.get_latest_model()
 
         print("New model!", latest[1], "!=", models[-1][1])
-        buf.flush(os.path.join(write_dir, latest[0]+1))
+        buf.flush(os.path.join(write_dir, str(latest[0]+1)))
 
 
 def _ensure_dir_exists(directory):
