@@ -88,7 +88,7 @@ class DualNetworkTrainer():
             tf.train.Saver().save(sess, self.save_file)
 
     def train(self, tf_records, init_from=None, num_steps=None,
-              logging_freq=100, verbosity=1):
+              logging_freq=1000, verbosity=1):
         """
         Train a model on the set of records given by tf_records.
         tf_records will *not* be filtered.
@@ -351,7 +351,7 @@ def train_ops(input_tensors, output_tensors, **hparams):
     policy_output = output_tensors['policy_output']
     policy_entropy = -tf.reduce_mean(tf.reduce_sum(
         policy_output * tf.log(policy_output), axis=1))
-    boundaries = list(map(int, [1e6, 2 * 1e6]))
+    boundaries = list(map(int, [18 * 1e6, 36 * 1e6]))
     values = [1e-2, 1e-3, 1e-4]
     learning_rate = tf.train.piecewise_constant(
         global_step, boundaries, values)

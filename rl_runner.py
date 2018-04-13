@@ -41,8 +41,11 @@ def loop(logdir=None):
         gather_errors = 0
 
         with timer("Train"):
-            subprocess.call(
+            train = subprocess.call(
                 ("python rl_loop.py train --logdir=%s" % logdir).split())
+            if train != 0:
+                print("Skipping validation")
+                continue
 
         with timer("validate"):
             subprocess.call(

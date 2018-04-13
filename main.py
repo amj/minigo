@@ -190,6 +190,8 @@ def gather(
     print("Found %d models" % len(models))
     for model_name, record_files in sorted(model_gamedata.items()):
         print("    %s: %s files" % (model_name, len(record_files)))
+    print(" >> {} total games".format(
+        sum([len(f) for f in model_gamedata.values()])))
 
     meta_file = os.path.join(output_directory, 'meta.txt')
     try:

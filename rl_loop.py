@@ -193,7 +193,7 @@ def validate(logdir=None, model_num=None):
 
     main.validate(*holdout_dirs,
                   load_file=os.path.join(MODELS_DIR, model_name),
-                  logdir=logdir)
+                  logdir=logdir, num_steps=2000)
 
 
 parser = argparse.ArgumentParser()
