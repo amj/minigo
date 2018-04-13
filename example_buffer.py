@@ -124,7 +124,7 @@ def _rsync_dir(source_dir, dest_dir):
 
 
 def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
-         write_dir=rl_loop.TRAINING_CHUNK_DIR,
+         write_dir=rl_loop.GOLDEN_CHUNK_DIR,
          model_window=100,
          threads=8,
          skip_first_rsync=False):
