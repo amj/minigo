@@ -88,7 +88,9 @@ class ExampleBuffer():
             self.examples.extend(choices)
 
     def flush(self, path):
-        preprocessing.write_tf_examples(path, [ex[1] for ex in self.examples])
+        with timer("Writing examples to " + path):
+            preprocessing.write_tf_examples(
+                path, [ex[1] for ex in self.examples])
 
     @property
     def count(self):
@@ -132,7 +134,7 @@ def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
             with timer("Rsync"):
                 smart_rsync(models[-1][0] - 6)
         files = list(tqdm(map(files_for_model, models), total=len(models)))
-        buf.parallel_fill(list(itertools.chain(*files)))
+        buf.parallel_fill(list(itertools.chain(*files)), threads=threads)
 
         print("Filled buffer, watching for new games")
         while rl_loop.get_latest_model()[0] == models[-1][0]:
@@ -172,7 +174,9 @@ def make_chunk_for(output_dir=LOCAL_DIR,
     buf.parallel_fill(files, threads=threads,
                       samples_per_game=samples_per_game)
     print(buf)
-    buf.flush(os.path.join(output_dir, str(model_num) + '.tfrecord.zz'))
+    output = os.path.join(output_dir, str(model_num) + '.tfrecord.zz')
+    print("Writing to", output)
+    buf.flush(output)
 
 
 def _ensure_dir_exists(directory):
