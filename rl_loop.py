@@ -22,6 +22,7 @@ import main
 import shipname
 import sys
 import time
+import tempfile
 from utils import timer
 from tensorflow import gfile
 
@@ -153,20 +154,20 @@ def train(logdir=None, load_dir=MODELS_DIR, save_dir=MODELS_DIR):
     new_model_name = shipname.generate(model_num + 1)
     print("New model will be {}".format(new_model_name))
     training_file = os.path.join(
-        TRAINING_CHUNK_DIR, str(model_num + 1), '.tfrecord.zz')
+        GOLDEN_CHUNK_DIR, str(model_num + 1) + '.tfrecord.zz')
     while not gfile.Exists(training_file):
         print("Waiting for", training_file)
         time.sleep(1*60)
 
     with tempfile.TemporaryDirectory() as base_dir:
         local_copy = os.path.join(base_dir, os.path.basename(training_file))
-        tf.gfile.Copy(training_file, local_copy)
+        gfile.Copy(training_file, local_copy)
 
         load_file = os.path.join(load_dir, model_name)
         save_file = os.path.join(save_dir, new_model_name)
         try:
             main.train([local_copy], save_file=save_file, load_file=load_file,
-                       generation_num=model_num, logdir=logdir)
+                       logdir=logdir)
         except:
             logging.exception("Train error")
 
