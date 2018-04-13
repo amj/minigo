@@ -91,6 +91,7 @@ class ExampleBuffer():
         with timer("Writing examples to " + path):
             preprocessing.write_tf_examples(
                 path, [ex[1] for ex in self.examples])
+        self.examples = []
 
     @property
     def count(self):
