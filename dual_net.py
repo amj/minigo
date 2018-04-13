@@ -351,7 +351,7 @@ def train_ops(input_tensors, output_tensors, **hparams):
     policy_output = output_tensors['policy_output']
     policy_entropy = -tf.reduce_mean(tf.reduce_sum(
         policy_output * tf.log(policy_output), axis=1))
-    boundaries = list(map(int, [18 * 1e6, 36 * 1e6]))
+    boundaries = list(map(int, [10 * 1e6, 20 * 1e6]))
     values = [1e-2, 1e-3, 1e-4]
     learning_rate = tf.train.piecewise_constant(
         global_step, boundaries, values)
