@@ -88,7 +88,6 @@ class ExampleBuffer():
             self.examples.extend(choices)
 
     def flush(self, path):
-        print(self)
         preprocessing.write_tf_examples(path, [ex[1] for ex in self.examples])
 
     @property
@@ -159,7 +158,7 @@ def make_chunk_for(output_dir=LOCAL_DIR,
     buf = ExampleBuffer(positions)
     cur_model = model_num - 1
     files = []
-    while len(files) < (positions * samples_per_game) and cur_model >= 0:
+    while (len(files) * samples_per_game) < positions and cur_model >= 0:
         local_model_dir = os.path.join(LOCAL_DIR, models[cur_model])
         if not tf.gfile.Exists(local_model_dir):
             print("Rsyncing", models[cur_model])
@@ -167,6 +166,8 @@ def make_chunk_for(output_dir=LOCAL_DIR,
                 game_dir, models[cur_model]), local_model_dir)
         files += tf.gfile.Glob(os.path.join(local_model_dir, '*.zz'))
         cur_model -= 1
+
+    print("Filling from {} files".format(len(files)))
 
     buf.parallel_fill(files, threads=threads,
                       samples_per_game=samples_per_game)
