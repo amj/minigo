@@ -34,6 +34,7 @@ SELFPLAY_DIR = os.path.join(BASE_DIR, 'data/selfplay')
 HOLDOUT_DIR = os.path.join(BASE_DIR, 'data/holdout')
 SGF_DIR = os.path.join(BASE_DIR, 'sgf')
 TRAINING_CHUNK_DIR = os.path.join(BASE_DIR, 'data', 'training_chunks')
+GOLDEN_CHUNK_DIR = os.path.join(BASE_DIR, 'data', 'golden_chunks')
 
 # How many games before the selfplay workers will stop trying to play more.
 MAX_GAMES_PER_GENERATION = 10000
@@ -136,7 +137,7 @@ def gather():
                 output_directory=TRAINING_CHUNK_DIR)
 
 
-def train(logdir=None):
+def train(logdir=None, load_dir=MODELS_DIR, save_dir=MODELS_DIR):
     model_num, model_name = get_latest_model()
 
     games = gfile.Glob(os.path.join(SELFPLAY_DIR, model_name, '*.zz'))
@@ -151,14 +152,23 @@ def train(logdir=None):
     print("Training on gathered game data, initializing from {}".format(model_name))
     new_model_name = shipname.generate(model_num + 1)
     print("New model will be {}".format(new_model_name))
-    load_file = os.path.join(MODELS_DIR, model_name)
-    save_file = os.path.join(MODELS_DIR, new_model_name)
-    try:
-        main.train(TRAINING_CHUNK_DIR, save_file=save_file, load_file=load_file,
-                   generation_num=model_num, logdir=logdir)
-    except:
-        print("Got an error training, muddling on...")
-        logging.exception("Train error")
+    training_file = os.path.join(
+        TRAINING_CHUNK_DIR, str(model_num + 1), '.tfrecord.zz')
+    while not gfile.Exists(training_file):
+        print("Waiting for", training_file)
+        time.sleep(1*60)
+
+    with tempfile.TemporaryDirectory() as base_dir:
+        local_copy = os.path.join(base_dir, os.path.basename(training_file))
+        tf.gfile.Copy(training_file, local_copy)
+
+        load_file = os.path.join(load_dir, model_name)
+        save_file = os.path.join(save_dir, new_model_name)
+        try:
+            main.train([local_copy], save_file=save_file, load_file=load_file,
+                       generation_num=model_num, logdir=logdir)
+        except:
+            logging.exception("Train error")
 
 
 def validate(logdir=None, model_num=None):
