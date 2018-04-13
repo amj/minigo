@@ -145,11 +145,13 @@ def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
             new_files = list(
                 tqdm(map(files_for_model, models[-2:]), total=len(models)))
             buf.update(list(itertools.chain(*new_files)))
-            print(self)
         latest = rl_loop.get_latest_model()
 
         print("New model!", latest[1], "!=", models[-1][1])
+        print(buf)
         buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
+        del buf
+        buf = ExampleBuffer(bufsize)
 
 
 def make_chunk_for(output_dir=LOCAL_DIR,
