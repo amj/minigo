@@ -133,6 +133,8 @@ def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
     while tf.gfile.Exists(chunk_to_make):
         print("Next chunk ({}) already exists.  Sleeping.".format(chunk_to_make))
         time.sleep(5*60)
+        models = rl_loop.get_models()[-model_window:]
+    print("Making chunk:", chunk_to_make)
     if not skip_first_rsync:
         with timer("Rsync"):
             smart_rsync(models[-1][0] - 6)
