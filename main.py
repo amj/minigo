@@ -89,7 +89,8 @@ def train_dir(chunk_dir, save_file, load_file=None,
 
 
 def train(chunks, save_file, load_file=None,
-          logdir=None, num_steps=0, verbosity=1):
+          logdir=None, num_steps=None, verbosity=1):
+    """ If num_steps is None, defaults to params in dual_net """
     print("Training on:", chunks[0], "to", chunks[-1])
     n = dual_net.DualNetworkTrainer(save_file, logdir=logdir)
     with timer("Training"):
