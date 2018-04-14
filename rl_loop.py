@@ -160,17 +160,13 @@ def train(logdir=None, load_dir=MODELS_DIR, save_dir=MODELS_DIR):
         time.sleep(1*60)
     print("Using Golden File:", training_file)
 
-    with tempfile.TemporaryDirectory() as base_dir:
-        local_copy = os.path.join(base_dir, os.path.basename(training_file))
-        gfile.Copy(training_file, local_copy)
-
-        load_file = os.path.join(load_dir, model_name)
-        save_file = os.path.join(save_dir, new_model_name)
-        try:
-            main.train([local_copy], save_file=save_file, load_file=load_file,
-                       logdir=logdir)
-        except:
-            logging.exception("Train error")
+    load_file = os.path.join(load_dir, model_name)
+    save_file = os.path.join(save_dir, new_model_name)
+    try:
+        main.train([training_file], save_file=save_file, load_file=load_file,
+                   logdir=logdir)
+    except:
+        logging.exception("Train error")
 
 
 def validate(logdir=None, model_num=None):
