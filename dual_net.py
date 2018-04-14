@@ -93,6 +93,7 @@ class DualNetworkTrainer():
         Train a model on the set of records given by tf_records.
         tf_records will *not* be filtered.
         """
+        tf.logging.set_verbosity(tf.logging.WARN)  # Hide startup spam
         logdir = os.path.join(
             self.logdir, 'train') if self.logdir is not None else None
 
