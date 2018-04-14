@@ -127,8 +127,11 @@ def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
                   skip_first_rsync=False):
     buf = ExampleBuffer(bufsize)
     models = rl_loop.get_models()[-model_window:]
-    while tf.gfile.Exists(os.path.join(rl_loop.GOLDEN_CHUNK_DIR, str(models[-1][0] + 1) + '.tfrecord.zz')):
-        print("Next chunk already exists.  Sleeping.")
+    # Last model is N.  N+1 is training.  We should gather games for N+2.
+    chunk_to_make = os.path.join(rl_loop.GOLDEN_CHUNK_DIR, str(
+        models[-1][0] + 2) + '.tfrecord.zz')
+    while tf.gfile.Exists(chunk_to_make):
+        print("Next chunk ({}) already exists.  Sleeping.".format(chunk_to_make))
         time.sleep(5*60)
     if not skip_first_rsync:
         with timer("Rsync"):
