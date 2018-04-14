@@ -120,35 +120,33 @@ def _rsync_dir(source_dir, dest_dir):
                     stderr=open('.rsync_log', 'ab'))
 
 
-def loop(bufsize=dual_net.EXAMPLES_PER_GENERATION,
-         write_dir=rl_loop.GOLDEN_CHUNK_DIR,
-         model_window=100,
-         threads=8,
-         skip_first_rsync=False):
+def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
+                  write_dir=rl_loop.GOLDEN_CHUNK_DIR,
+                  model_window=100,
+                  threads=8,
+                  skip_first_rsync=False):
     buf = ExampleBuffer(bufsize)
+    models = rl_loop.get_models()[-model_window:]
+    if not skip_first_rsync:
+        with timer("Rsync"):
+            smart_rsync(models[-1][0] - 6)
+    files = list(tqdm(map(files_for_model, models), total=len(models)))
+    buf.parallel_fill(list(itertools.chain(*files)), threads=threads)
 
-    while True:
-        models = rl_loop.get_models()[-model_window:]
-        if not skip_first_rsync:
-            with timer("Rsync"):
-                smart_rsync(models[-1][0] - 6)
-        files = list(tqdm(map(files_for_model, models), total=len(models)))
-        buf.parallel_fill(list(itertools.chain(*files)), threads=threads)
+    print("Filled buffer, watching for new games")
+    while rl_loop.get_latest_model()[0] == models[-1][0]:
+        with timer("Rsync"):
+            smart_rsync(models[-1][0] - 2)
+        new_files = list(
+            tqdm(map(files_for_model, models[-2:]), total=len(models)))
+        buf.update(list(itertools.chain(*new_files)))
+    latest = rl_loop.get_latest_model()
 
-        print("Filled buffer, watching for new games")
-        while rl_loop.get_latest_model()[0] == models[-1][0]:
-            with timer("Rsync"):
-                smart_rsync(models[-1][0] - 2)
-            new_files = list(
-                tqdm(map(files_for_model, models[-2:]), total=len(models)))
-            buf.update(list(itertools.chain(*new_files)))
-        latest = rl_loop.get_latest_model()
-
-        print("New model!", latest[1], "!=", models[-1][1])
-        print(buf)
-        buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
-        del buf
-        buf = ExampleBuffer(bufsize)
+    print("New model!", latest[1], "!=", models[-1][1])
+    print(buf)
+    buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
+    del buf
+    buf = ExampleBuffer(bufsize)
 
 
 def make_chunk_for(output_dir=LOCAL_DIR,
@@ -187,7 +185,7 @@ def _ensure_dir_exists(directory):
 
 
 parser = argparse.ArgumentParser()
-argh.add_commands(parser, [loop, smart_rsync, make_chunk_for])
+argh.add_commands(parser, [fill_and_wait, smart_rsync, make_chunk_for])
 
 if __name__ == "__main__":
     argh.dispatch(parser)
