@@ -41,7 +41,7 @@ GOLDEN_CHUNK_DIR = os.path.join(BASE_DIR, 'data', 'golden_chunks')
 MAX_GAMES_PER_GENERATION = 10000
 
 # How many games minimum, until the trainer will train
-MIN_GAMES_PER_GENERATION = 5000
+MIN_GAMES_PER_GENERATION = 500
 
 # What percent of games to holdout from training per generation
 HOLDOUT_PCT = 0.05
@@ -158,6 +158,7 @@ def train(logdir=None, load_dir=MODELS_DIR, save_dir=MODELS_DIR):
     while not gfile.Exists(training_file):
         print("Waiting for", training_file)
         time.sleep(1*60)
+    print("Using Golden File:", training_file)
 
     with tempfile.TemporaryDirectory() as base_dir:
         local_copy = os.path.join(base_dir, os.path.basename(training_file))
