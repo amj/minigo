@@ -12,6 +12,7 @@ from utils import timer
 import time
 import preprocessing
 import argh
+from collections import deque
 import argparse
 import datetime as dt
 
@@ -53,7 +54,7 @@ def _ts_to_str(timestamp):
 
 class ExampleBuffer():
     def __init__(self, max_size=2000000):
-        self.examples = []
+        self.examples = deque(maxlen=max_size)
         self.max_size = max_size
 
     def parallel_fill(self, games, threads=8, samples_per_game=4):
@@ -65,7 +66,7 @@ class ExampleBuffer():
 
         with mp.Pool(threads) as p:
              r = tqdm(p.imap(f, games), total=len(games))
-             self.examples = list(itertools.chain(*r))
+             self.examples.extend(list(itertools.chain(*r)))
 
     def update(self, new_games, samples_per_game=4):
         """
@@ -83,16 +84,12 @@ class ExampleBuffer():
 
             choices = [(t, ex) for ex in pick_examples_from_tfrecord(
                 game, samples_per_game)]
-            if self.count > self.max_size:
-                self.examples = self.examples[samples_per_game:]
             self.examples.extend(choices)
 
     def flush(self, path):
         with timer("Writing examples to " + path):
             preprocessing.write_tf_examples(
                 path, [ex[1] for ex in self.examples])
-        del self.examples
-        self.examples = []
 
     @property
     def count(self):
