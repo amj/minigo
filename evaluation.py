@@ -16,10 +16,10 @@
 
 import os
 import time
-import sgf_wrapper
-
-from gtp_wrapper import MCTSPlayer
 from tensorflow import gfile
+
+import sgf_wrapper
+from gtp_wrapper import MCTSPlayer
 
 SIMULTANEOUS_LEAVES = 8
 

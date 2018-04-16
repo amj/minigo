@@ -18,7 +18,6 @@ We run as subprocesses because it gives us some isolation.
 """
 
 import subprocess
-import sys
 from utils import timer
 
 

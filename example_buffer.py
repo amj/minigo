@@ -115,9 +115,9 @@ def smart_rsync(from_model_num=0, source_dir=rl_loop.SELFPLAY_DIR, dest_dir=LOCA
 
 def _rsync_dir(source_dir, dest_dir):
     _ensure_dir_exists(dest_dir)
-    with open('.rsync_log', 'ab') as rsync_log
-    subprocess.call(['gsutil', '-m', 'rsync', source_dir, dest_dir],
-                    stderr=rsync_log)
+    with open('.rsync_log', 'ab') as rsync_log:
+        subprocess.call(['gsutil', '-m', 'rsync', source_dir, dest_dir],
+                        stderr=rsync_log)
 
 
 def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
