@@ -107,10 +107,10 @@ def train_dir(
 
 def train(
         working_dir: 'tf.estimator working directory.',
-        chunk_dir: 'Directory where gathered training chunks are.',
+        tf_records: 'list of files of tf_records to train on',
         model_save_path: 'Where to export the completed generation.',
         generation_num: 'Which generation you are training.'=0):
-    print("Training on:", chunks[0], "to", chunks[-1])
+    print("Training on:", tf_records[0], "to", tf_records[-1])
     with timer("Training"):
         dual_net.train(working_dir, tf_records, generation_num)
         dual_net.export_model(working_dir, model_save_path)
