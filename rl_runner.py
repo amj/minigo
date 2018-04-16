@@ -19,7 +19,6 @@ We run as subprocesses because it gives us some isolation.
 
 import subprocess
 import sys
-import argh
 from utils import timer
 
 
@@ -35,9 +34,8 @@ def loop(logdir=None):
                 continue
 
         with timer("validate"):
-            subprocess.call(
-                ("python rl_loop.py validate --logdir=%s" % logdir).split())
+            subprocess.call("python rl_loop.py validate", shell=True)
 
 
 if __name__ == '__main__':
-    argh.dispatch_command(loop)
+    loop()

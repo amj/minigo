@@ -1,3 +1,4 @@
+#!/bin/sh
 # Copyright 2018 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,20 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#!/bin/sh
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+source ${SCRIPT_DIR}/common.sh
+source ${SCRIPT_DIR}/utils.sh
 
-# Added to the player image.
-# Wraps our call to main.py
+check_gcloud_exists
 
-set -e
-
-echo creds: $GOOGLE_APPLICATION_CREDENTIALS
-echo bucket: $BUCKET_NAME
-echo board_size: $BOARD_SIZE
-
-python3 rl_loop.py selfplay \
-  --resign-threshold=0.88 \
-  --readouts=900
-
-
-echo Finished a set of games!
+gcloud container clusters delete $CLUSTER_NAME --project=$PROJECT --zone=$ZONE --async

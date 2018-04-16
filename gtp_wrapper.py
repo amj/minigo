@@ -50,7 +50,7 @@ class GtpInterface(object):
         self.position.komi = komi
 
     def clear(self):
-        if self.position and len(self.position.recent) > 1:
+        if self.position and self.result_string and len(self.position.recent) > 1:
             try:
                 sgf = self.to_sgf()
                 with open(datetime.datetime.now().strftime("%Y-%m-%d-%H:%M.sgf"), 'w') as f:

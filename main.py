@@ -18,8 +18,10 @@ import os.path
 import collections
 import random
 import re
+import shutil
 import socket
 import sys
+import tempfile
 import time
 import cloud_logging
 from tqdm import tqdm
@@ -76,43 +78,60 @@ def gtp(load_file: "The path to the network model files"=None,
             sys.stdout.flush()
 
 
-def bootstrap(save_file):
-    dual_net.DualNetworkTrainer(save_file).bootstrap()
+def bootstrap(
+        working_dir: 'tf.estimator working directory. If not set, defaults to a random tmp dir'=None,
+        model_save_path: 'Where to export the first bootstrapped generation'=None):
+    if working_dir is None:
+        with tempfile.TemporaryDirectory() as working_dir:
+            _ensure_dir_exists(working_dir)
+            _ensure_dir_exists(os.path.dirname(model_save_path))
+            dual_net.bootstrap(working_dir)
+            dual_net.export_model(working_dir, model_save_path)
+    else:
+        _ensure_dir_exists(working_dir)
+        _ensure_dir_exists(os.path.dirname(model_save_path))
+        dual_net.bootstrap(working_dir)
+        dual_net.export_model(working_dir, model_save_path)
 
 
-def train_dir(chunk_dir, save_file, load_file=None,
-              logdir=None, num_steps=0, verbosity=1):
+def train_dir(
+        working_dir: 'tf.estimator working directory.',
+        chunk_dir: 'Directory where gathered training chunks are.',
+        model_save_path: 'Where to export the completed generation.',
+        generation_num: 'Which generation you are training.'=0):
     tf_records = sorted(gfile.Glob(os.path.join(chunk_dir, '*.tfrecord.zz')))
     tf_records = tf_records[-1 * (WINDOW_SIZE // EXAMPLES_PER_RECORD):]
 
-    train(tf_records, save_file, load_file, logdir, num_steps, verbosity)
+    train(working_dir, tf_records, model_save_path, generation_num)
 
 
-def train(chunks, save_file, load_file=None,
-          logdir=None, num_steps=None, verbosity=1):
-    """ If num_steps is None, defaults to params in dual_net """
+def train(
+        working_dir: 'tf.estimator working directory.',
+        chunk_dir: 'Directory where gathered training chunks are.',
+        model_save_path: 'Where to export the completed generation.',
+        generation_num: 'Which generation you are training.'=0):
     print("Training on:", chunks[0], "to", chunks[-1])
-    n = dual_net.DualNetworkTrainer(save_file, logdir=logdir)
     with timer("Training"):
-        n.train(chunks, init_from=load_file,
-                num_steps=num_steps, verbosity=verbosity)
+        dual_net.train(working_dir, tf_records, generation_num)
+        dual_net.export_model(working_dir, model_save_path)
 
 
-def validate(*tf_record_dirs, load_file=None, logdir=None, num_steps=100):
-    """Computes the error terms for a set of holdout data specified by
-    `holdout_dir`, using the model specified at `load_file` and logging TB
-    metrics to the dir in `logdir`, using `num_steps` batches of examples
-    """
-    n = dual_net.DualNetworkTrainer(logdir=logdir)
-
+def validate(
+        working_dir: 'tf.estimator working directory',
+        *tf_record_dirs: 'Directories where holdout data are',
+        checkpoint_name: 'Which checkpoint to evaluate (None=latest)'=None,
+        validate_name: 'Name for validation set (i.e., selfplay or human)'=None):
+    tf_records = []
     with timer("Building lists of holdout files"):
-        tf_records = [item for sublist in map(lambda path: gfile.Glob(
-            os.path.join(path, '*.zz')), tf_record_dirs) for item in sublist]
+        for record_dir in tf_record_dirs:
+            tf_records.extend(gfile.Glob(os.path.join(record_dir, '*.zz')))
 
-    with timer("Validating from {} to {}".format(os.path.basename(tf_records[0]),
-                                                 os.path.basename(tf_records[-1]))):
-        n.validate(tf_records, batch_size=dual_net.TRAIN_BATCH_SIZE,
-                   init_from=load_file, num_steps=num_steps)
+    first_record = os.path.basename(tf_records[0])
+    last_record = os.path.basename(tf_records[-1])
+    with timer("Validating from {} to {}".format(first_record, last_record)):
+        dual_net.validate(
+            working_dir, tf_records, checkpoint_name=checkpoint_name,
+            name=validate_name)
 
 
 def evaluate(
@@ -151,7 +170,6 @@ def selfplay(
 
     with timer("Loading weights from %s ... " % load_file):
         network = dual_net.DualNetwork(load_file)
-        network.name = os.path.basename(load_file)
 
     with timer("Playing game"):
         player = selfplay_mcts.play(
@@ -221,9 +239,42 @@ def gather(
         f.write('\n'.join(sorted(already_processed)))
 
 
+def convert(load_file, dest_file):
+    from tensorflow.python.framework import meta_graph
+    features, labels = dual_net.get_inference_input()
+    dual_net.model_fn(features, labels, tf.estimator.ModeKeys.PREDICT,
+                      dual_net.get_default_hyperparams())
+    sess = tf.Session()
+
+    # retrieve the global step as a python value
+    ckpt = tf.train.load_checkpoint(load_file)
+    global_step_value = ckpt.get_tensor('global_step')
+
+    # restore all saved weights, except global_step
+    meta_graph_def = meta_graph.read_meta_graph_file(
+        load_file + '.meta')
+    stored_var_names = set([n.name
+                            for n in meta_graph_def.graph_def.node
+                            if n.op == 'VariableV2'])
+    stored_var_names.remove('global_step')
+    var_list = [v for v in tf.global_variables()
+                if v.op.name in stored_var_names]
+    tf.train.Saver(var_list=var_list).restore(sess, load_file)
+
+    # manually set the global step
+    global_step_tensor = tf.train.get_or_create_global_step()
+    assign_op = tf.assign(global_step_tensor, global_step_value)
+    sess.run(assign_op)
+
+    # export a new savedmodel that has the right global step type
+    tf.train.Saver().save(sess, dest_file)
+    sess.close()
+    tf.reset_default_graph()
+
+
 parser = argparse.ArgumentParser()
 argh.add_commands(parser, [gtp, bootstrap, train,
-                           selfplay, gather, evaluate, validate])
+                           selfplay, gather, evaluate, validate, convert])
 
 if __name__ == '__main__':
     cloud_logging.configure()
