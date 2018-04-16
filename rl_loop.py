@@ -151,10 +151,11 @@ def train(logdir=None, load_dir=MODELS_DIR, save_dir=MODELS_DIR):
         sys.exit(1)
 
     print("Training on gathered game data, initializing from {}".format(model_name))
-    new_model_name = shipname.generate(model_num + 1)
+    new_model_num = model_num + 1
+    new_model_name = shipname.generate(new_model_num)
     print("New model will be {}".format(new_model_name))
     training_file = os.path.join(
-        GOLDEN_CHUNK_DIR, str(model_num + 1) + '.tfrecord.zz')
+        GOLDEN_CHUNK_DIR, str(new_model_num) + '.tfrecord.zz')
     while not gfile.Exists(training_file):
         print("Waiting for", training_file)
         time.sleep(1*60)

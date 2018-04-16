@@ -18,15 +18,15 @@ import datetime as dt
 
 
 # 1 for ZLIB!  Make this match preprocessing.
+#TODO: Unify with preprocessing
 READ_OPTS = tf.python_io.TFRecordOptions(1)
 
 LOCAL_DIR = "data/"
 
 
 def pick_examples_from_tfrecord(filename, samples_per_game=4):
-    protos = [p for p in
-              tf.python_io.tf_record_iterator(filename, READ_OPTS)]
-    if len(protos) < 20:
+    protos = list(tf.python_io.tf_record_iterator(filename, READ_OPTS))
+    if len(protos) < 20:  # Filter games with less than 20 moves
         return []
     choices = random.sample(protos, samples_per_game)
 
@@ -34,8 +34,7 @@ def pick_examples_from_tfrecord(filename, samples_per_game=4):
         e = tf.train.Example()
         e.ParseFromString(protostring)
         return e
-    examples = list(map(make_example, choices))
-    return examples
+    return list(map(make_example, choices))
 
 
 def choose(g, samples_per_game=4):
@@ -49,7 +48,7 @@ def file_timestamp(filename):
 
 
 def _ts_to_str(timestamp):
-    return dt.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    return dt.datetime.fromtimestamp(timestamp).isoformat("%Y-%m-%d %H:%M:%S")
 
 
 class ExampleBuffer():
@@ -58,7 +57,7 @@ class ExampleBuffer():
         self.max_size = max_size
 
     def parallel_fill(self, games, threads=8, samples_per_game=4):
-        games.sort(key=lambda f: os.path.basename(f))
+        games.sort(key=os.path.basename)
         if len(games) * samples_per_game > self.max_size:
             games = games[-1 * self.max_size // samples_per_game:]
 
@@ -72,7 +71,7 @@ class ExampleBuffer():
         """
         new_games is list of .tfrecord.zz files of new games
         """
-        new_games.sort(key=lambda f: os.path.basename(f))
+        new_games.sort(key=os.path.basename)
         first_new_game = None
         for i, game in enumerate(tqdm(new_games)):
             t = file_timestamp(game)
@@ -116,8 +115,9 @@ def smart_rsync(from_model_num=0, source_dir=rl_loop.SELFPLAY_DIR, dest_dir=LOCA
 
 def _rsync_dir(source_dir, dest_dir):
     _ensure_dir_exists(dest_dir)
+    with open('.rsync_log', 'ab') as rsync_log
     subprocess.call(['gsutil', '-m', 'rsync', source_dir, dest_dir],
-                    stderr=open('.rsync_log', 'ab'))
+                    stderr=rsync_log)
 
 
 def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
@@ -148,13 +148,12 @@ def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
         new_files = list(
             tqdm(map(files_for_model, models[-2:]), total=len(models)))
         buf.update(list(itertools.chain(*new_files)))
+        time.sleep(60)
     latest = rl_loop.get_latest_model()
 
     print("New model!", latest[1], "!=", models[-1][1])
     print(buf)
     buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
-    del buf
-    buf = ExampleBuffer(bufsize)
 
 
 def make_chunk_for(output_dir=LOCAL_DIR,
