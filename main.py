@@ -80,16 +80,21 @@ def bootstrap(save_file):
     dual_net.DualNetworkTrainer(save_file).bootstrap()
 
 
-def train(chunk_dir, save_file, load_file=None, generation_num=0,
-          logdir=None, num_steps=None, verbosity=1):
+def train_dir(chunk_dir, save_file, load_file=None,
+              logdir=None, num_steps=0, verbosity=1):
     tf_records = sorted(gfile.Glob(os.path.join(chunk_dir, '*.tfrecord.zz')))
     tf_records = tf_records[-1 * (WINDOW_SIZE // EXAMPLES_PER_RECORD):]
 
-    print("Training from:", tf_records[0], "to", tf_records[-1])
+    train(tf_records, save_file, load_file, logdir, num_steps, verbosity)
 
+
+def train(chunks, save_file, load_file=None,
+          logdir=None, num_steps=None, verbosity=1):
+    """ If num_steps is None, defaults to params in dual_net """
+    print("Training on:", chunks[0], "to", chunks[-1])
     n = dual_net.DualNetworkTrainer(save_file, logdir=logdir)
     with timer("Training"):
-        n.train(tf_records, init_from=load_file,
+        n.train(chunks, init_from=load_file,
                 num_steps=num_steps, verbosity=verbosity)
 
 
@@ -186,6 +191,8 @@ def gather(
     print("Found %d models" % len(models))
     for model_name, record_files in sorted(model_gamedata.items()):
         print("    %s: %s files" % (model_name, len(record_files)))
+    print(" >> {} total games".format(
+        sum([len(f) for f in model_gamedata.values()])))
 
     meta_file = os.path.join(output_directory, 'meta.txt')
     try:
