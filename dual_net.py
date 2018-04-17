@@ -305,6 +305,13 @@ def export_model(working_dir, model_path):
         print("Copying {} to {}".format(filename, destination_path))
         tf.gfile.Copy(filename, destination_path)
 
+    # Now, reload these copied files
+    n = dual_net.DualNetwork(model_path)
+    out_graph = tf.graph_util.convert_variables_to_constants(
+        n.sess, n.sess.graph.as_graph_def(), ["policy_output", "value_output"])
+    with open(os.path.join(model_path + '.pb'), 'wb') as f:
+         f.write(out_graph.SerializeToString())
+
 
 def train(working_dir, tf_records, generation_num, **hparams):
     assert generation_num > 0, "Model 0 is random weights"
