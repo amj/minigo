@@ -26,8 +26,6 @@
 
 namespace minigo {
 
-constexpr float MctsNode::kPuct;
-
 MctsNode::MctsNode(EdgeStats* stats, const Position& position)
     : parent(nullptr), stats(stats), move(Coord::kInvalid), position(position) {
   for (int i = 0; i < kNumMoves; ++i) {
@@ -63,9 +61,9 @@ std::string MctsNode::Describe() const {
   std::ostringstream oss;
   oss << std::fixed;
   oss << setprecision(4) << Q() << "\n";
-  oss << MostVisitedPath() << "\n";
+  oss << MostVisitedPathString() << "\n";
   oss << "move : action    Q     U     P   P-Dir    N  soft-N  p-delta  "
-         "p-rel\n";
+         "p-rel";
 
   float child_N_sum = 0;
   for (const auto& e : edges) {
@@ -80,7 +78,7 @@ std::string MctsNode::Describe() const {
     float p_delta = soft_N - child_P(i);
     float p_rel = p_delta / child_P(i);
     // clang-format off
-    oss << std::left << setw(5) << i.ToKgs() << std::right
+    oss << "\n" << std::left << setw(5) << i.ToKgs() << std::right
         << ": " << setw(6) << setprecision(3) << child_action_score[i]
         << " " << setw(6) << child_Q(i)
         << " " << setw(5) << child_U(i)
@@ -89,30 +87,43 @@ std::string MctsNode::Describe() const {
         << " " << setw(5) << static_cast<int>(child_N(i))
         << " " << setw(5) << setprecision(4) << soft_N
         << " " << setw(8) << setprecision(5) << p_delta
-        << " " << setw(5) << setprecision(2) << p_rel << "\n";
+        << " " << setw(5) << setprecision(2) << p_rel;
     // clang-format on
   }
   return oss.str();
 }
 
-std::string MctsNode::MostVisitedPath() const {
-  std::ostringstream oss;
-
+std::vector<Coord> MctsNode::MostVisitedPath() const {
+  std::vector<Coord> path;
   const auto* node = this;
   while (!node->children.empty()) {
     int next_kid = ArgMax(
         node->edges,
         [](const EdgeStats& a, const EdgeStats& b) { return a.N < b.N; });
+    path.push_back(next_kid);
     auto it = node->children.find(next_kid);
+    if (it == node->children.end()) {
+      break;
+    }
+    node = it->second.get();
+  }
+  return path;
+}
+
+std::string MctsNode::MostVisitedPathString() const {
+  std::ostringstream oss;
+  const auto* node = this;
+  for (Coord c : MostVisitedPath()) {
+    auto it = node->children.find(c);
     if (it == node->children.end()) {
       oss << "GAME END";
       break;
     }
-    node = it->second.get();
     oss << node->move.ToKgs() << " (" << static_cast<int>(node->N())
         << ") ==> ";
+    node = it->second.get();
   }
-  oss << std::setprecision(5) << "Q: " << node->Q();
+  oss << std::fixed << std::setprecision(5) << "Q: " << node->Q();
   return oss.str();
 }
 

@@ -15,7 +15,6 @@
 """Wrapper scripts to ensure that main.py commands are called correctly."""
 import argh
 import argparse
-import cloud_logging
 import logging
 import os
 import main
@@ -24,6 +23,9 @@ import sys
 import time
 import tempfile
 from utils import timer
+
+from absl import flags
+import cloud_logging
 from tensorflow import gfile
 
 # Pull in environment variables. Run `source ./cluster/common` to set these.
@@ -236,4 +238,5 @@ argh.add_commands(parser, [train, selfplay, gather, echo, backfill,
 if __name__ == '__main__':
     print_flags()
     cloud_logging.configure()
-    argh.dispatch(parser)
+    remaining_argv = flags.FLAGS(sys.argv, known_only=True)
+    argh.dispatch(parser, argv=remaining_argv[1:])

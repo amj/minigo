@@ -16,11 +16,12 @@ import unittest
 import unittest.mock as mock
 import numpy as np
 
+from absl import flags
+
 import coords
 import go
 from go import Position
 from tests import test_utils
-from mcts import MCTSNode, MAX_DEPTH
 from strategies import MCTSPlayerMixin, time_recommendation
 
 ALMOST_DONE_BOARD = test_utils.load_board('''
@@ -35,7 +36,7 @@ XXXXXOOOO
 XXXXOOOOO
 ''')
 
-#Tromp taylor means black can win if we hit the move limit.
+# Tromp taylor means black can win if we hit the move limit.
 TT_FTW_BOARD = test_utils.load_board('''
 .XXOOOOOO
 X.XOO...O
@@ -58,6 +59,7 @@ SEND_TWO_RETURN_ONE = go.Position(
             go.PlayerMove(go.WHITE, (0, 8))),
     to_play=go.BLACK
 )
+
 
 class DummyNet():
     def __init__(self, fake_priors=None, fake_value=0):
@@ -215,7 +217,7 @@ class TestMCTSPlayerMixin(test_utils.MiniGoUnitTest):
         player = MCTSPlayerMixin(DummyNet())
         endgame = go.Position(
             board=TT_FTW_BOARD,
-            n=MAX_DEPTH-2,
+            n=flags.FLAGS.max_game_length - 2,
             komi=2.5,
             ko=None,
             recent=(go.PlayerMove(go.BLACK, (0, 1)),
@@ -294,7 +296,8 @@ class TestMCTSPlayerMixin(test_utils.MiniGoUnitTest):
         position, pi, result = data[0]
         # White wins by komi
         self.assertEqual(result, go.WHITE)
-        self.assertEqual(player.result_string, "W+{}".format(player.root.position.komi))
+        self.assertEqual(player.result_string,
+                         "W+{}".format(player.root.position.komi))
 
     def test_extract_data_resign_end(self):
         player = MCTSPlayerMixin(DummyNet())

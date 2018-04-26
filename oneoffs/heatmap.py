@@ -1,6 +1,6 @@
 """
 Used to plot a heatmap of the policy and value networks.
-Check FLAGS for default values for what models to load.
+Check FLAGS for default values.
 
 Usage:
 python heatmap.py
@@ -34,7 +34,7 @@ tf.app.flags.DEFINE_integer("eval_every", 5,
 FLAGS = tf.app.flags.FLAGS
 
 
-def eval_for_policy(eval_positions, model_dir, data_dir, idx_start, eval_every):
+def eval_policy(eval_positions)
     """Evaluate all positions with all models save the policy heatmaps as CSVs
 
     CSV name is "heatmap-<position_name>-<model-index>.csv"
@@ -44,10 +44,14 @@ def eval_for_policy(eval_positions, model_dir, data_dir, idx_start, eval_every):
     Policy network outputs (19x19) are saved in flat order (see coord.from_flat)
     """
 
-    model_paths = oneoff_utils.get_model_paths(model_dir)
+    model_paths = oneoff_utils.get_model_paths(FLAGS.model_dir)
+
+    idx_start = FLAGS.idx_start
+    eval_every = FLAGS.eval_every
 
     print("Evaluating models {}-{}, eval_every={}".format(
           idx_start, len(model_paths), eval_every))
+
     for idx in tqdm(range(idx_start, len(model_paths), eval_every)):
         if idx == idx_start:
             player = oneoff_utils.load_player(model_paths[idx])
@@ -60,40 +64,34 @@ def eval_for_policy(eval_positions, model_dir, data_dir, idx_start, eval_every):
 
         for pos_name, probs, value in zip(pos_names, eval_probs, eval_values):
             save_file = os.path.join(
-                data_dir, "heatmap-{}-{}.csv".format(pos_name, idx))
+                FLAGS.data_dir, "heatmap-{}-{}.csv".format(pos_name, idx))
 
             with open(save_file, "w") as data:
                 data.write("{},  {},  {}\n".format(
                     idx, value, ",".join(map(str, probs))))
 
 
-def positions_from_sgfs(sgf_files, include_empty_position=True):
-    data = []
+def positions_from_sgfs(sgf_files):
+    positions = []
     if include_empty:
         # sgf_replay doesn't like SGFs with no moves played.
         # Add the empty position for analysis manually.
-        data.append(("empty", go.Position(komi=7.5)))
+        positions.append(("empty", go.Position(komi=7.5)))
+
     for sgf in sgf_files:
         sgf_name = os.path.basename(sgf).replace(".sgf", "")
-        positions, moves, _ = oneoff_utils.parse_sgf(sgf)
-        final = positions[-1].play_move(moves[-1])
-        data.append((sgf_name, final))
-    return data
+        sgf_positions, moves, _ = oneoff_utils.parse_sgf(sgf)
+        final = sgf_positions[-1].play_move(moves[-1])
+        positions.append((sgf_name, final))
+    return positions
 
 
 def main(unusedargv):
     sgf_files = oneoff_utils.find_and_filter_sgf_files(FLAGS.sgf_dir)
     eval_positions = positions_from_sgfs(sgf_files)
 
-    eval_for_policy(
-        eval_positions,
-        FLAGS.model_dir,
-        FLAGS.data_dir,
-        FLAGS.idx_start,
-        FLAGS.eval_every)
+    eval_policy(eval_positions)
 
-
-FLAGS = tf.app.flags.FLAGS
 
 if __name__ == "__main__":
     tf.app.run(main)

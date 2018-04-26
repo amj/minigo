@@ -7,24 +7,40 @@ from flask import Flask
 
 from flask_socketio import SocketIO
 
+import functools
 import json
+import logging
 import subprocess
 from threading import Lock
-import functools
+
+# Suppress Flask's info logging.
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.WARNING)
 
 app = Flask(__name__, static_url_path="", static_folder="static")
 app.config["SECRET_KEY"] = "woo"
 socketio = SocketIO(app)
 
-#TODO(amj) extract to flag
-MODEL_PATH = "saved_models/000427-super-lion"
-BOARD_SIZE = "9" # Models are hardcoded to a board size.
+# TODO(amj) extract to flag
+MODEL_PATH = "saved_models/000483-indus-upgrade"
+# If you change this BOARD_SIZE variable, also change the line at the top of
+# minigui.ts that says const N = board.BoardSize.Nine
+BOARD_SIZE = "19"  # Models are hardcoded to a board size.
 
 GTP_COMMAND = ["python",  "-u",  # turn off buffering
                "main.py", "gtp",
                "--load-file", MODEL_PATH,
                "--readouts", "1000",
                "-v", "2"]
+
+# GTP_COMMAND = [
+#     "bazel-bin/cc/main",
+#     "--model=" + MODEL_PATH + ".pb",
+#     "--num_readouts=100",
+#     "--soft_pick=false",
+#     "--inject_noise=false",
+#     "--disable_resign_pct=0",
+#     "--mode=gtp"]
 
 
 def _open_pipes():
@@ -48,6 +64,7 @@ def std_bg_thread(stream):
 
     for line in p.__getattribute__(stream):
         line = line.decode()
+        # print("###", stream, line[:-1])
         if line[-1] == "\n":
             line = line[:-1]
 
@@ -89,4 +106,4 @@ def index():
 
 
 if __name__ == "__main__":
-  socketio.run(app)
+    socketio.run(app)
