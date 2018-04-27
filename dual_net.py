@@ -215,8 +215,8 @@ def model_fn(features, labels, mode, params, config=None):
     combined_cost = policy_cost + value_cost + l2_cost
     policy_entropy = -tf.reduce_mean(tf.reduce_sum(
         policy_output * tf.log(policy_output), axis=1))
-    boundaries = [10 * int(1e6), 20 * int(1e6)]
-    values = [1e-2, 1e-4, 1e-5]
+    boundaries = [40 * int(1e6), 80 * int(1e6)]
+    values = [1e-2, 1e-3, 1e-4]
     learning_rate = tf.train.piecewise_constant(
         global_step, boundaries, values)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
