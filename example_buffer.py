@@ -17,7 +17,7 @@ import argparse
 import datetime as dt
 
 
-READ_OPTS = preprocess.TF_RECORD_CONFIG
+READ_OPTS = preprocessing.TF_RECORD_CONFIG
 
 LOCAL_DIR = "data/"
 
@@ -62,8 +62,8 @@ class ExampleBuffer():
         func = functools.partial(choose, samples_per_game=samples_per_game)
 
         with mp.Pool(threads) as pool:
-             res = tqdm(pool.imap(func, games), total=len(games))
-             self.examples.extend(itertools.chain(*res))
+            res = tqdm(pool.imap(func, games), total=len(games))
+            self.examples.extend(itertools.chain(*res))
 
     def update(self, new_games, samples_per_game=4):
         """
@@ -77,7 +77,8 @@ class ExampleBuffer():
                 continue
             elif first_new_game is None:
                 first_new_game = idx
-                print("Found {}/{} new games".format(len(new_games)-idx, len(new_games)))
+                print(
+                    "Found {}/{} new games".format(len(new_games) - idx, len(new_games)))
 
             choices = [(timestamp, ex) for ex in pick_examples_from_tfrecord(
                 game, samples_per_game)]
@@ -103,7 +104,10 @@ def files_for_model(model):
     return tf.gfile.Glob(os.path.join(LOCAL_DIR, model[1], '*.zz'))
 
 
-def smart_rsync(from_model_num=0, source_dir=rl_loop.SELFPLAY_DIR, dest_dir=LOCAL_DIR):
+def smart_rsync(
+        from_model_num=0,
+        source_dir=rl_loop.SELFPLAY_DIR,
+        dest_dir=LOCAL_DIR):
     from_model_num = 0 if from_model_num < 0 else from_model_num
     models = [m for m in rl_loop.get_models() if m[0] >= from_model_num]
     for m in models:
@@ -135,7 +139,7 @@ def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
         models[-1][0] + 2) + '.tfrecord.zz')
     while tf.gfile.Exists(chunk_to_make):
         print("Next chunk ({}) already exists.  Sleeping.".format(chunk_to_make))
-        time.sleep(5*60)
+        time.sleep(5 * 60)
         models = rl_loop.get_models()[-model_window:]
     print("Making chunk:", chunk_to_make)
     if not skip_first_rsync:
@@ -148,14 +152,14 @@ def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
     while rl_loop.get_latest_model()[0] == models[-1][0]:
         with timer("Rsync"):
             smart_rsync(models[-1][0] - 2)
-        new_files = tqdm(map(files_for_model, models[-2:]), total=len(models)))
+        new_files = tqdm(map(files_for_model, models[-2:]), total=len(models))
         buf.update(list(itertools.chain(*new_files)))
         time.sleep(60)
     latest = rl_loop.get_latest_model()
 
     print("New model!", latest[1], "!=", models[-1][1])
     print(buf)
-    buf.flush(os.path.join(write_dir, str(latest[0]+1) + '.tfrecord.zz'))
+    buf.flush(os.path.join(write_dir, str(latest[0] + 1) + '.tfrecord.zz'))
 
 
 def make_chunk_for(output_dir=LOCAL_DIR,
@@ -171,7 +175,8 @@ def make_chunk_for(output_dir=LOCAL_DIR,
       While we haven't yet got enough samples (EXAMPLES_PER_GENERATION)
       Add samples from the games of previous model.
     """
-    models = [(num, name) for num, name in rl_loop.get_models() if num < model_num]
+    models = [(num, name)
+              for num, name in rl_loop.get_models() if num < model_num]
     buf = ExampleBuffer(positions)
     cur_model = model_num - 1
     files = []
@@ -193,7 +198,6 @@ def make_chunk_for(output_dir=LOCAL_DIR,
     output = os.path.join(output_dir, str(model_num) + '.tfrecord.zz')
     print("Writing to", output)
     buf.flush(output)
-
 
 
 parser = argparse.ArgumentParser()
