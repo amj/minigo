@@ -145,7 +145,7 @@ def gather():
                 output_directory=TRAINING_CHUNK_DIR)
 
 
-def train(logdir=None, load_dir=MODELS_DIR, save_dir=MODELS_DIR):
+def train(load_dir=MODELS_DIR, save_dir=MODELS_DIR):
     model_num, model_name = get_latest_model()
 
     games = gfile.Glob(os.path.join(SELFPLAY_DIR, model_name, '*.zz'))

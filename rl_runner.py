@@ -17,17 +17,18 @@
 We run as subprocesses because it gives us some isolation.
 """
 
+import argh
 import subprocess
 from utils import timer
 
 
-def loop(logdir=None):
+def loop(working_dir=None):
     """Run train and validate as subprocesses."""
     while True:
         print("==================================")
         with timer("Train"):
             train = subprocess.call(
-                ("python rl_loop.py train --logdir=%s" % logdir).split())
+                ("python rl_loop.py train --working-dir=%s" % working_dir).split())
             if train != 0:
                 print("Skipping validation")
                 continue
@@ -37,4 +38,4 @@ def loop(logdir=None):
 
 
 if __name__ == '__main__':
-    loop()
+    argh.dispatch_command(loop)

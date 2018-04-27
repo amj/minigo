@@ -14,7 +14,7 @@ from collections import deque
 
 import preprocessing
 import dual_net
-from utils import timer, _ensure_dir_exists
+from utils import timer, ensure_dir_exists
 import rl_loop
 
 
@@ -117,7 +117,7 @@ def smart_rsync(
 
 
 def _rsync_dir(source_dir, dest_dir):
-    _ensure_dir_exists(dest_dir)
+    ensure_dir_exists(dest_dir)
     with open('.rsync_log', 'ab') as rsync_log:
         subprocess.call(['gsutil', '-m', 'rsync', source_dir, dest_dir],
                         stderr=rsync_log)
@@ -176,7 +176,7 @@ def make_chunk_for(output_dir=LOCAL_DIR,
       While we haven't yet got enough samples (EXAMPLES_PER_GENERATION)
       Add samples from the games of previous model.
     """
-    _ensure_dir_exists(output_dir)
+    ensure_dir_exists(output_dir)
     models = [(num, name)
               for num, name in rl_loop.get_models() if num < model_num]
     buf = ExampleBuffer(positions)

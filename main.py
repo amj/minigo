@@ -27,7 +27,7 @@ import preprocessing
 import selfplay_mcts
 from gtp_wrapper import make_gtp_instance
 from utils import logged_timer as timer
-from utils import _ensure_dir_exists
+from utils import ensure_dir_exists
 
 import cloud_logging
 import tensorflow as tf
@@ -46,10 +46,12 @@ WINDOW_SIZE = 125000000
 
 def gtp(load_file: "The path to the network model files"=None,
         cgos_mode: 'Whether to use CGOS time constraints'=False,
+        kgs_mode: 'Whether to use KGS courtesy-pass'=False,
         verbose=1):
     engine = make_gtp_instance(load_file,
                                verbosity=verbose,
-                               cgos_mode=cgos_mode)
+                               cgos_mode=cgos_mode,
+                               kgs_mode=kgs_mode)
     sys.stderr.write("GTP engine ready\n")
     sys.stderr.flush()
     while not engine.disconnect:
@@ -71,13 +73,13 @@ def bootstrap(
         model_save_path: 'Where to export the first bootstrapped generation'=None):
     if working_dir is None:
         with tempfile.TemporaryDirectory() as working_dir:
-            _ensure_dir_exists(working_dir)
-            _ensure_dir_exists(os.path.dirname(model_save_path))
+            ensure_dir_exists(working_dir)
+            ensure_dir_exists(os.path.dirname(model_save_path))
             dual_net.bootstrap(working_dir)
             dual_net.export_model(working_dir, model_save_path)
     else:
-        _ensure_dir_exists(working_dir)
-        _ensure_dir_exists(os.path.dirname(model_save_path))
+        ensure_dir_exists(working_dir)
+        ensure_dir_exists(os.path.dirname(model_save_path))
         dual_net.bootstrap(working_dir)
         dual_net.export_model(working_dir, model_save_path)
         freeze_graph(model_save_path)
@@ -130,7 +132,7 @@ def evaluate(
         output_dir: 'Where to write the evaluation results'='sgf/evaluate',
         games: 'the number of games to play'=16,
         verbose: 'How verbose the players should be (see selfplay)' = 1):
-    _ensure_dir_exists(output_dir)
+    ensure_dir_exists(output_dir)
 
     with timer("Loading weights"):
         black_net = dual_net.DualNetwork(black_model)
@@ -150,10 +152,10 @@ def selfplay(
         holdout_pct: 'how many games to hold out for validation' = 0.05):
     clean_sgf = os.path.join(output_sgf, 'clean')
     full_sgf = os.path.join(output_sgf, 'full')
-    _ensure_dir_exists(clean_sgf)
-    _ensure_dir_exists(full_sgf)
-    _ensure_dir_exists(output_dir)
-    _ensure_dir_exists(holdout_dir)
+    ensure_dir_exists(clean_sgf)
+    ensure_dir_exists(full_sgf)
+    ensure_dir_exists(output_dir)
+    ensure_dir_exists(holdout_dir)
 
     with timer("Loading weights from %s ... " % load_file):
         network = dual_net.DualNetwork(load_file)
@@ -183,7 +185,7 @@ def gather(
         input_directory: 'where to look for games'='data/selfplay/',
         output_directory: 'where to put collected games'='data/training_chunks/',
         examples_per_record: 'how many tf.examples to gather in each chunk'=EXAMPLES_PER_RECORD):
-    _ensure_dir_exists(output_directory)
+    ensure_dir_exists(output_directory)
     models = [model_dir.strip('/')
               for model_dir in sorted(gfile.ListDirectory(input_directory))[-50:]]
     with timer("Finding existing tfrecords..."):

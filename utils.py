@@ -25,7 +25,7 @@ import sys
 import time
 
 
-def _ensure_dir_exists(directory):
+def ensure_dir_exists(directory):
     if directory.startswith('gs://'):
         return
     print("Making dir {}".format(directory), file=sys.stderr)

@@ -142,13 +142,16 @@ class KGSPlayer(MCTSPlayer):
         return super().clear()
 
 
-def make_gtp_instance(read_file, readouts_per_move=100, verbosity=1, cgos_mode=False, kgs_mode=True):
+def make_gtp_instance(read_file, readouts_per_move=100, verbosity=1, cgos_mode=False, kgs_mode=False):
     n = DualNetwork(read_file)
     if cgos_mode:
         instance = CGOSPlayer(n, seconds_per_move=5, timed_match=True,
                               verbosity=verbosity, two_player_mode=True)
-    else:
+    elif kgs_mode:
         instance = KGSPlayer(network=n, simulations_per_move=readouts_per_move,
+                             verbosity=verbosity, two_player_mode=True)
+    else:
+        instance = MCTSPlayer(network=n, simulations_per_move=readouts_per_move,
                              verbosity=verbosity, two_player_mode=True)
     name = "Minigo-" + os.path.basename(read_file)
     gtp_engine = gtp_extensions.GTPDeluxe(instance, name=name)
