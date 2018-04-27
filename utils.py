@@ -16,8 +16,9 @@
 from contextlib import contextmanager
 import functools
 import itertools
-import operator
 import logging
+import operator
+import os
 import random
 import re
 import sys

@@ -2,6 +2,6 @@
 to move 30 (from 31, because odd number = bias against black)
 
 2. v192 -- learning rate erroneously cut to 0.001.  v207 returned to 0.01.
-(v206 trained with 0.001, v207 @0.01)
+(v206 trained with 0.001, v207 @0.01) (Later rolled back completely)
 
-3. v231 -- moved #readouts to 900 from 800.
+3. v231 -- moved #readouts to 900 from 800 as game length was too short

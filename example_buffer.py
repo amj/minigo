@@ -47,7 +47,7 @@ def file_timestamp(filename):
 
 
 def _ts_to_str(timestamp):
-    return dt.datetime.fromtimestamp(timestamp).isoformat("%Y-%m-%d %H:%M:%S")
+    return dt.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
 
 
 class ExampleBuffer():
@@ -111,9 +111,9 @@ def smart_rsync(
         dest_dir=LOCAL_DIR):
     from_model_num = 0 if from_model_num < 0 else from_model_num
     models = [m for m in rl_loop.get_models() if m[0] >= from_model_num]
-    for m in models:
+    for _, model in models:
         _rsync_dir(os.path.join(
-            source_dir, m[1]), os.path.join(dest_dir, m[1]))
+            source_dir, model), os.path.join(dest_dir, model))
 
 
 def _rsync_dir(source_dir, dest_dir):
@@ -176,6 +176,7 @@ def make_chunk_for(output_dir=LOCAL_DIR,
       While we haven't yet got enough samples (EXAMPLES_PER_GENERATION)
       Add samples from the games of previous model.
     """
+    _ensure_dir_exists(output_dir)
     models = [(num, name)
               for num, name in rl_loop.get_models() if num < model_num]
     buf = ExampleBuffer(positions)
