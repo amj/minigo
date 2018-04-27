@@ -1,4 +1,11 @@
-load(":config/minigo_test.bzl", "minigo_9_test", "minigo_19_test")
+load(
+    ":config/minigo.bzl",
+    "minigo_cc_binary",
+    "minigo_cc_library",
+    "minigo_cc_test",
+    "minigo_cc_test_19_only",
+    "minigo_cc_test_9_only",
+)
 
 cc_library(
     name = "tensorflow",
@@ -16,12 +23,11 @@ cc_library(
     ],
 )
 
-cc_library(
+minigo_cc_library(
     name = "base",
     srcs = [
         "color.cc",
         "coord.cc",
-        "move.cc",
     ],
     hdrs = [
         "algorithm.h",
@@ -32,11 +38,27 @@ cc_library(
         "stone.h",
     ],
     deps = [
+        ":check",
         "@com_google_absl//absl/strings",
     ],
 )
 
-cc_library(
+minigo_cc_library(
+    name = "check",
+    srcs = [
+        "check.cc",
+    ],
+    hdrs = [
+        "check.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/debugging:stacktrace",
+        "@com_google_absl//absl/debugging:symbolize",
+    ],
+)
+
+minigo_cc_library(
     name = "dual_net",
     srcs = ["dual_net.cc"],
     hdrs = ["dual_net.h"],
@@ -49,12 +71,37 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "inline_vector",
-    hdrs = ["inline_vector.h"],
+minigo_cc_library(
+    name = "gtp_player",
+    srcs = ["gtp_player.cc"],
+    hdrs = ["gtp_player.h"],
+    deps = [
+        ":dual_net",
+        ":mcts",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
 )
 
-cc_library(
+minigo_cc_library(
+    name = "init",
+    srcs = ["init.cc"],
+    hdrs = ["init.h"],
+    deps = [
+        "@com_github_gflags_gflags//:gflags",
+        "@com_google_absl//absl/debugging:symbolize",
+    ],
+)
+
+minigo_cc_library(
+    name = "inline_vector",
+    hdrs = ["inline_vector.h"],
+    deps = [
+        ":check",
+    ],
+)
+
+minigo_cc_library(
     name = "mcts",
     srcs = [
         "mcts_node.cc",
@@ -75,7 +122,7 @@ cc_library(
     ],
 )
 
-cc_library(
+minigo_cc_library(
     name = "position",
     srcs = [
         "group.cc",
@@ -92,7 +139,7 @@ cc_library(
     ],
 )
 
-cc_library(
+minigo_cc_library(
     name = "random",
     srcs = ["random.cc"],
     hdrs = ["random.h"],
@@ -102,7 +149,7 @@ cc_library(
     ],
 )
 
-cc_library(
+minigo_cc_library(
     name = "sgf",
     srcs = ["sgf.cc"],
     hdrs = ["sgf.h"],
@@ -113,17 +160,32 @@ cc_library(
     ],
 )
 
-cc_library(
+minigo_cc_library(
     name = "symmetries",
     hdrs = ["symmetries.h"],
+    deps = [
+        ":check",
+    ],
 )
 
-cc_library(
+minigo_cc_library(
+    name = "tf_utils",
+    srcs = ["tf_utils.cc"],
+    hdrs = ["tf_utils.h"],
+    deps = [
+        ":base",
+        ":dual_net",
+        ":tensorflow",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+minigo_cc_library(
     name = "tiny_set",
     hdrs = ["tiny_set.h"],
 )
 
-cc_library(
+minigo_cc_library(
     name = "test_utils",
     testonly = 1,
     srcs = ["test_utils.cc"],
@@ -136,7 +198,7 @@ cc_library(
     ],
 )
 
-cc_test(
+minigo_cc_test(
     name = "coord_test",
     size = "small",
     srcs = ["coord_test.cc"],
@@ -146,7 +208,7 @@ cc_test(
     ],
 )
 
-minigo_9_test(
+minigo_cc_test_9_only(
     name = "dual_net_test",
     size = "small",
     srcs = ["dual_net_test.cc"],
@@ -158,7 +220,7 @@ minigo_9_test(
     ],
 )
 
-minigo_9_test(
+minigo_cc_test_9_only(
     name = "mcts_node_test",
     size = "small",
     srcs = ["mcts_node_test.cc"],
@@ -171,7 +233,7 @@ minigo_9_test(
     ],
 )
 
-minigo_9_test(
+minigo_cc_test_9_only(
     name = "mcts_player_test",
     size = "small",
     srcs = ["mcts_player_test.cc"],
@@ -184,7 +246,7 @@ minigo_9_test(
     ],
 )
 
-minigo_9_test(
+minigo_cc_test_9_only(
     name = "position_test",
     size = "small",
     srcs = ["position_test.cc"],
@@ -197,7 +259,7 @@ minigo_9_test(
     ],
 )
 
-cc_test(
+minigo_cc_test(
     name = "random_test",
     size = "small",
     srcs = ["random_test.cc"],
@@ -207,7 +269,7 @@ cc_test(
     ],
 )
 
-minigo_19_test(
+minigo_cc_test_19_only(
     name = "sgf_test",
     size = "small",
     srcs = ["sgf_test.cc"],
@@ -218,7 +280,7 @@ minigo_19_test(
     ],
 )
 
-cc_test(
+minigo_cc_test(
     name = "symmetries_test",
     size = "small",
     srcs = ["symmetries_test.cc"],
@@ -228,18 +290,27 @@ cc_test(
     ],
 )
 
-cc_binary(
-    name = "tf_test",
-    srcs = ["tf_test.cc"],
+minigo_cc_binary(
+    name = "main",
+    srcs = ["main.cc"],
     deps = [
         ":base",
         ":dual_net",
+        ":gtp_player",
+        ":init",
         ":mcts",
+        ":random",
+        ":sgf",
+        ":tf_utils",
+        "//cc/file",
         "@com_github_gflags_gflags//:gflags",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
-cc_binary(
+minigo_cc_binary(
     name = "position_benchmark",
     srcs = ["position_benchmark.cc"],
     deps = [

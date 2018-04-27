@@ -15,8 +15,9 @@
 #ifndef CC_COLOR_H_
 #define CC_COLOR_H_
 
-#include <cassert>
 #include <iostream>
+
+#include "cc/check.h"
 
 namespace minigo {
 
@@ -30,7 +31,7 @@ enum class Color {
 };
 
 inline Color OtherColor(Color color) {
-  assert(color == Color::kWhite || color == Color::kBlack);
+  MG_CHECK(color == Color::kWhite || color == Color::kBlack);
   return color == Color::kWhite ? Color::kBlack : Color::kWhite;
 }
 
