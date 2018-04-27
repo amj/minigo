@@ -39,7 +39,7 @@ import go
 # Per AGZ, 2048 minibatch * 1k = 2M positions/generation
 EXAMPLES_PER_GENERATION = 2000000
 
-# How many positions can fit on a graphics card. 256 for 9s, 16 or 32 for 19s.
+# How many positions can fit on the trainer; 256 for 19s on a p100
 TRAIN_BATCH_SIZE = 256
 
 

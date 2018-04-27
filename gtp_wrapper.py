@@ -118,6 +118,9 @@ class CGOSPlayer(CGOSPlayerMixin, GtpInterface):
 
 
 class KGSPlayer(MCTSPlayer):
+    """ A wrapper for playing on KGS
+    Adds 'courtsey pass' -- if the opponent passes, we pass, regardless
+    of score or our opinion on the game. """
     def __init__(self, **kwargs):
         self.they_passed = False
         super().__init__(**kwargs)
