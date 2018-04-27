@@ -168,7 +168,7 @@ class MCTSPlayerMixin:
             fcoord = np.argmax(self.root.child_N)
         else:
             cdf = self.root.child_N.cumsum()
-            cdf /= cdf[-2]
+            cdf /= cdf[-2] # Prevents passing via softpick.
             selection = random.random()
             fcoord = cdf.searchsorted(selection)
             assert self.root.child_N[fcoord] != 0

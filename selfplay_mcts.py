@@ -20,7 +20,7 @@ from absl import flags
 import coords
 from gtp_wrapper import MCTSPlayer
 
-SIMULTANEOUS_LEAVES = 16
+SIMULTANEOUS_LEAVES = 8
 
 
 def play(network, verbosity=0):

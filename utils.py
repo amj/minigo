@@ -20,7 +20,15 @@ import operator
 import logging
 import random
 import re
+import sys
 import time
+
+
+def _ensure_dir_exists(directory):
+    if directory.startswith('gs://'):
+        return
+    print("Making dir {}".format(directory), file=sys.stderr)
+    os.makedirs(directory, exist_ok=True)
 
 
 def parse_game_result(result):

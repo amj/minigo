@@ -27,6 +27,7 @@ import preprocessing
 import selfplay_mcts
 from gtp_wrapper import make_gtp_instance
 from utils import logged_timer as timer
+from utils import _ensure_dir_exists
 
 import cloud_logging
 import tensorflow as tf
@@ -41,12 +42,6 @@ EXAMPLES_PER_RECORD = 10000
 # AGZ used the most recent 500k games, which, assuming 250 moves/game = 125M
 WINDOW_SIZE = 125000000
 
-
-def _ensure_dir_exists(directory):
-    if directory.startswith('gs://'):
-        return
-    print("Making dir {}".format(directory))
-    os.makedirs(directory, exist_ok=True)
 
 
 def gtp(load_file: "The path to the network model files"=None,
