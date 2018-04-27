@@ -1,20 +1,21 @@
-import tensorflow as tf
-import os
-import random
-from tqdm import tqdm
-import multiprocessing as mp
-import functools
-import itertools
-import rl_loop
-import dual_net
-import subprocess
-from utils import timer, _ensure_dir_exists
-import time
-import preprocessing
 import argh
-from collections import deque
 import argparse
 import datetime as dt
+import functools
+import itertools
+import multiprocessing as mp
+import os
+import random
+import subprocess
+import time
+import tensorflow as tf
+from tqdm import tqdm
+from collections import deque
+
+import preprocessing
+import dual_net
+from utils import timer, _ensure_dir_exists
+import rl_loop
 
 
 READ_OPTS = preprocessing.TF_RECORD_CONFIG
@@ -178,7 +179,6 @@ def make_chunk_for(output_dir=LOCAL_DIR,
     models = [(num, name)
               for num, name in rl_loop.get_models() if num < model_num]
     buf = ExampleBuffer(positions)
-    cur_model = model_num - 1
     files = []
     for _, model in sorted(models, reverse=True):
         local_model_dir = os.path.join(LOCAL_DIR, model)
