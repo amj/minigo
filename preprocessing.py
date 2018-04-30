@@ -100,7 +100,7 @@ def batch_parse_tf_example(batch_size, example_batch):
     return x, {'pi_tensor': pi, 'value_tensor': outcome}
 
 
-def read_tf_records(batch_size, tf_records, num_repeats=None,
+def read_tf_records(batch_size, tf_records, num_repeats=1,
                     shuffle_records=True, shuffle_examples=True,
                     shuffle_buffer_size=None,
                     filter_amount=1.0):
@@ -138,7 +138,7 @@ def read_tf_records(batch_size, tf_records, num_repeats=None,
     if num_repeats is not None:
         dataset = dataset.repeat(num_repeats)
     else:
-        dataset = dataset.repeat(1)
+        dataset = dataset.repeat()
     if shuffle_examples:
         dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
     dataset = dataset.batch(batch_size)
