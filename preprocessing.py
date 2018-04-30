@@ -108,7 +108,7 @@ def read_tf_records(batch_size, tf_records, num_repeats=None,
     Args:
         batch_size: batch size to return
         tf_records: a list of tf_record filenames
-        num_repeats: how many times the data should be read (default: infinite)
+        num_repeats: how many times the data should be read (default: One)
         shuffle_records: whether to shuffle the order of files read
         shuffle_examples: whether to shuffle the tf.Examples
         shuffle_buffer_size: how big of a buffer to fill before shuffling.
@@ -138,7 +138,7 @@ def read_tf_records(batch_size, tf_records, num_repeats=None,
     if num_repeats is not None:
         dataset = dataset.repeat(num_repeats)
     else:
-        dataset = dataset.repeat()
+        dataset = dataset.repeat(1)
     if shuffle_examples:
         dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
     dataset = dataset.batch(batch_size)
