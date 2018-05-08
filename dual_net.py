@@ -355,6 +355,7 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
     def __init__(self, working_dir, every_n_steps=100):
         self.working_dir = working_dir
         self.every_n_steps = every_n_steps
+        self.before_weights = None
 
     def begin(self):
         # These calls only works because the SessionRunHook api guarantees this
@@ -366,7 +367,7 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
 
     def before_run(self, run_context):
         global_step = run_context.session.run(self.global_step)
-        if global_step % self.every_n_steps == 0:
+        if global_step % self.every_n_steps == 0 or self.before_weights is None:
             self.before_weights = run_context.session.run(self.weight_tensors)
 
     def after_run(self, run_context, run_values):
