@@ -95,8 +95,8 @@ def train(working_dir):
     print("Copying locally to ", local_copy)
     gfile.Copy(training_file, local_copy, overwrite=True)
 
-    save_file = os.path.join(fsdb.models_dir(), new_model_name)
     try:
+        save_file = os.path.join(fsdb.models_dir(), new_model_name)
         main.train(working_dir, [local_copy], save_file)
     except:
         logging.exception("Train error")
