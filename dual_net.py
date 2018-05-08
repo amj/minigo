@@ -367,12 +367,12 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
 
     def before_run(self, run_context):
         global_step = run_context.session.run(self.global_step)
-        if global_step % self.every_n_steps == 0 or self.before_weights is None:
+        if global_step % self.every_n_steps == 0:
             self.before_weights = run_context.session.run(self.weight_tensors)
 
     def after_run(self, run_context, run_values):
         global_step = run_context.session.run(self.global_step)
-        if global_step % self.every_n_steps == 0:
+        if self.before_weights is not None:
             after_weights = run_context.session.run(self.weight_tensors)
             weight_update_summaries = compute_update_ratio(
                 self.weight_tensors, self.before_weights, after_weights)
