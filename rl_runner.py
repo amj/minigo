@@ -29,7 +29,7 @@ BUCKET_NAME = os.environ['BUCKET_NAME']
 def loop(working_dir='estimator_working_dir'):
     """Run train and validate as subprocesses."""
     flags = [
-        '--working_dir',
+        working_dir,
         '--bucket_name', BUCKET_NAME,
     ]
     while True:
