@@ -24,13 +24,13 @@ echo board_size: $BOARD_SIZE
 
 #gcloud auth activate-service-account --key-file=/etc/credentials/service-account.json
 echo Retrieiving Model
-MODEL_NAME=`gsutil ls "gs://$BUCKET_NAME/models/*.pb" | sort | tail -n 1`
+MODEL_FILE=`gsutil ls "gs://$BUCKET_NAME/models/*.pb" | sort | tail -n 1`
 echo Retrieiving games
-GAMES=`gsutil ls "gs://$BUCKET_NAME/data/selfplay/$MODEL_NAME/*.zz" | wc -l`
-
-gsutil cp $MODEL_NAME .
-NAME=`echo $MODEL_NAME  | rev | cut -d/ -f1 | rev`
+NAME=`echo $MODEL_FILE  | rev | cut -d/ -f1 | rev`
 BASENAME=`echo $NAME | cut -d. -f1`
+GAMES=`gsutil ls "gs://$BUCKET_NAME/data/selfplay/$NAME/*.zz" | wc -l`
+
+gsutil cp $MODEL_FILE .
 
 mkdir -p data/selfplay
 mkdir -p sgf
@@ -46,7 +46,7 @@ then
     --output_dir="gs://$BUCKET_NAME/data/selfplay/$BASENAME" \
     --sgf_dir="gs://$BUCKET_NAME/sgf/$BASENAME"
 else
-  echo "$MODEL_NAME has enough games ($GAMES)"
+  echo "$NAME has enough games ($GAMES)"
 fi
 
 echo Finished a set of games!
