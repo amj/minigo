@@ -46,8 +46,8 @@ then
     --resign_threshold=0.90 \
     --output_dir="gs://$BUCKET_NAME/data/selfplay/$BASENAME" \
     --sgf_dir="gs://$BUCKET_NAME/sgf/$BASENAME"
+  echo Finished a set of games!
 else
   echo "$NAME has enough games ($GAMES)"
 fi
 
-echo Finished a set of games!
