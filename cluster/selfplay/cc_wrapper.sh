@@ -28,7 +28,8 @@ MODEL_FILE=`gsutil ls "gs://$BUCKET_NAME/models/*.pb" | sort | tail -n 1`
 echo Retrieiving games
 NAME=`echo $MODEL_FILE  | rev | cut -d/ -f1 | rev`
 BASENAME=`echo $NAME | cut -d. -f1`
-GAMES=`gsutil ls "gs://$BUCKET_NAME/data/selfplay/$NAME/*.zz" | wc -l`
+echo "gsutil ls 'gs://$BUCKET_NAME/data/selfplay/$BASENAME/*.zz'"
+GAMES=`gsutil ls "gs://$BUCKET_NAME/data/selfplay/$BASENAME/*.zz" | wc -l`
 
 gsutil cp $MODEL_FILE .
 
