@@ -36,7 +36,7 @@ gsutil cp $MODEL_FILE .
 mkdir -p data/selfplay
 mkdir -p sgf
 
-if [ $GAMES -lt 15000 ];
+if [ $GAMES -lt 25000 ];
 then
   echo Playing $NAME
   bazel-bin/cc/main \
