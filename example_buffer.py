@@ -139,10 +139,10 @@ def fill_and_wait(bufsize=dual_net.EXAMPLES_PER_GENERATION,
     buf = ExampleBuffer(bufsize)
     models = fsdb.get_models()[-model_window:]
     # Last model is N.  N+1 is training.  We should gather games for N+2.
-    last_chunk = int(tf.gfile.Glob(os.path.join(write_dir, "*.zz"))[-1].split('.tfrecord.zz')[0])
-    chunk_to_make = os.path.join(write_dir, str(last_chunk + 1) + '.tfrecord.zz')
+    chunk_to_make = os.path.join(write_dir, str(
+            models[-1][0] + 2) + '.tfrecord.zz')
     while tf.gfile.Exists(chunk_to_make):
-        print("Next chunk ({}) already exists.  Sleeping.".format(chunk_to_make))
+        print("Chunk for next model ({}) already exists.  Sleeping.".format(chunk_to_make))
         time.sleep(5 * 60)
         models = fsdb.get_models()[-model_window:]
     print("Making chunk:", chunk_to_make)
