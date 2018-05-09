@@ -43,7 +43,7 @@ then
     --model=$NAME \
     --num_readouts=800 \
     --mode=selfplay \
-    --resign_threshold=0.90 \
+    --resign_threshold=0.88 \
     --output_dir="gs://$BUCKET_NAME/data/selfplay/$BASENAME" \
     --sgf_dir="./sgf/"
   echo Copying Files.
