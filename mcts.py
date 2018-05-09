@@ -18,23 +18,31 @@ All terminology here (Q, U, N, p_UCT) uses the same notation as in the
 AlphaGo (AG) paper.
 """
 
-import numpy as np
 import collections
-import random
 import math
+
+from absl import flags
+import numpy as np
 
 import coords
 import go
 
-MAX_DEPTH = (go.N ** 2) * 1.4  # 505 moves for 19x19, 113 for 9x9
+# 505 moves for 19x19, 113 for 9x9
+flags.DEFINE_integer('max_game_length', int(go.N ** 2 * 1.4),
+                     'Move number at which game is forcibly terminated')
 
-# Exploration constant
-c_PUCT = 1.38
+flags.DEFINE_float('c_puct', 1.38,
+                   'Exploration constant balancing priors vs. value net output.')
 
-# Dirichlet noise, as a function of go.N
+flags.DEFINE_float('dirichlet_noise_alpha', 0.03 * 361 / (go.N ** 2),
+                   'Concentrated-ness of the noise being injected into priors.')
+flags.register_validator('dirichlet_noise_alpha', lambda x: 0 <= x < 1)
 
+flags.DEFINE_float('dirichlet_noise_weight', 0.25,
+                   'How much to weight the priors vs. dirichlet noise when mixing')
+flags.register_validator('dirichlet_noise_weight', lambda x: 0 <= x < 1)
 
-def D_NOISE_ALPHA(): return 0.03 * 361 / (go.N ** 2)
+FLAGS = flags.FLAGS
 
 
 class DummyNode(object):
@@ -94,7 +102,7 @@ class MCTSNode(object):
 
     @property
     def child_U(self):
-        return (c_PUCT * math.sqrt(1 + self.N) *
+        return (FLAGS.c_puct * math.sqrt(1 + self.N) *
                 self.child_prior / (1 + self.child_N))
 
     @property
@@ -227,11 +235,13 @@ class MCTSNode(object):
         '''True if the last two moves were Pass or if the position is at a move
         greater than the max depth.
         '''
-        return self.position.is_game_over() or self.position.n >= MAX_DEPTH
+        return self.position.is_game_over() or self.position.n >= FLAGS.max_game_length
 
     def inject_noise(self):
-        dirch = np.random.dirichlet([D_NOISE_ALPHA()] * ((go.N * go.N) + 1))
-        self.child_prior = self.child_prior * 0.75 + dirch * 0.25
+        dirch = np.random.dirichlet(
+            [FLAGS.dirichlet_noise_alpha] * ((go.N * go.N) + 1))
+        self.child_prior = (self.child_prior * (1 - FLAGS.dirichlet_noise_weight) +
+                            dirch * FLAGS.dirichlet_noise_weight)
 
     def children_as_pi(self, squash=False):
         """Returns the child visit counts as a probability distribution, pi
@@ -241,8 +251,19 @@ class MCTSNode(object):
         """
         probs = self.child_N
         if squash:
-            probs = probs ** .95
+            probs = probs ** .98
         return probs / np.sum(probs)
+
+    def most_visited_path_nodes(self):
+        node = self
+        output = []
+        while node.children:
+            next_kid = np.argmax(node.child_N)
+            node = node.children.get(next_kid)
+            if node is None:
+                break
+            output.append(node)
+        return output
 
     def most_visited_path(self):
         node = self
@@ -274,25 +295,29 @@ class MCTSNode(object):
         sort_order = list(range(go.N * go.N + 1))
         sort_order.sort(key=lambda i: (
             self.child_N[i], self.child_action_score[i]), reverse=True)
-        soft_n = self.child_N / sum(self.child_N)
-        p_delta = soft_n - self.child_prior
-        p_rel = p_delta / self.child_prior
+        soft_n = self.child_N / max(1, sum(self.child_N))
+        prior = self.child_prior
+        p_delta = soft_n - prior
+        p_rel = np.divide(p_delta, prior, out=np.zeros_like(
+            p_delta), where=prior != 0)
         # Dump out some statistics
         output = []
         output.append("{q:.4f}\n".format(q=self.Q))
         output.append(self.most_visited_path())
         output.append(
-            "move:  action      Q      U      P    P-Dir    N  soft-N  p-delta  p-rel\n")
-        output.append("\n".join(["{!s:6}: {: .3f}, {: .3f}, {:.3f}, {:.3f}, {:.3f}, {:4d} {:.4f} {: .5f} {: .2f}".format(
-            coords.to_kgs(coords.from_flat(key)),
-            self.child_action_score[key],
-            self.child_Q[key],
-            self.child_U[key],
-            self.child_prior[key],
-            self.original_prior[key],
-            int(self.child_N[key]),
-            soft_n[key],
-            p_delta[key],
-            p_rel[key])
-            for key in sort_order][:15]))
+            "move : action    Q     U     P   P-Dir    N  soft-N  p-delta  p-rel")
+        for key in sort_order[:15]:
+            if self.child_N[key] == 0:
+                break
+            output.append("\n{!s:4} : {: .3f} {: .3f} {:.3f} {:.3f} {:.3f} {:5d} {:.4f} {: .5f} {: .2f}".format(
+                coords.to_kgs(coords.from_flat(key)),
+                self.child_action_score[key],
+                self.child_Q[key],
+                self.child_U[key],
+                self.child_prior[key],
+                self.original_prior[key],
+                int(self.child_N[key]),
+                soft_n[key],
+                p_delta[key],
+                p_rel[key]))
         return ''.join(output)

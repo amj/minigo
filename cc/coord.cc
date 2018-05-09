@@ -22,48 +22,52 @@
 namespace minigo {
 
 constexpr uint16_t Coord::kPass;
+constexpr uint16_t Coord::kInvalid;
 constexpr char Coord::kKgsColumns[];
 
 namespace {
 
-std::pair<bool, Coord> TryParseKgs(absl::string_view str) {
+Coord TryParseKgs(absl::string_view str) {
   if (str == "pass") {
-    return {true, Coord::kPass};
+    return Coord::kPass;
+  }
+  if (str == "resign") {
+    return Coord::kResign;
   }
 
   auto col_char = str[0];
   if (col_char < 'A' || col_char > 'T' || col_char == 'I') {
-    return {false, Coord::kPass};
+    return Coord::kInvalid;
   }
   int col = col_char < 'I' ? col_char - 'A' : 8 + col_char - 'J';
 
   auto row_str = str.substr(1);
   int row;
   if (!absl::SimpleAtoi(row_str, &row) || row <= 0 || row > kN) {
-    return {false, Coord::kPass};
+    return Coord::kInvalid;
   }
-  return {true, {kN - row, col}};
+  return {kN - row, col};
 }
 
-std::pair<bool, Coord> TryParseSgf(absl::string_view str) {
+Coord TryParseSgf(absl::string_view str) {
   if (str.empty()) {
-    return {true, Coord::kPass};
+    return Coord::kPass;
   }
   if (str.size() != 2) {
-    return {false, Coord::kPass};
+    return Coord::kInvalid;
   }
 
   int col = str[0] - 'a';
   int row = str[1] - 'a';
   if (row < 0 || row >= kN || col < 0 || col >= kN) {
-    return {false, Coord::kPass};
+    return Coord::kInvalid;
   }
-  return {true, {row, col}};
+  return {row, col};
 }
 
-std::pair<bool, Coord> TryParseString(absl::string_view str) {
+Coord TryParseString(absl::string_view str) {
   auto result = TryParseKgs(str);
-  if (result.first) {
+  if (result != Coord::kInvalid) {
     return result;
   }
   return TryParseSgf(str);
@@ -71,27 +75,31 @@ std::pair<bool, Coord> TryParseString(absl::string_view str) {
 
 }  // namespace
 
-Coord Coord::FromKgs(absl::string_view str) {
-  auto result = TryParseKgs(str);
-  assert(result.first);
-  return result.second;
+Coord Coord::FromKgs(absl::string_view str, bool allow_invalid) {
+  auto c = TryParseKgs(str);
+  MG_CHECK(allow_invalid || c != Coord::kInvalid);
+  return c;
 }
 
-Coord Coord::FromSgf(absl::string_view str) {
-  auto result = TryParseSgf(str);
-  assert(result.first);
-  return result.second;
+Coord Coord::FromSgf(absl::string_view str, bool allow_invalid) {
+  auto c = TryParseSgf(str);
+  MG_CHECK(allow_invalid || c != Coord::kInvalid);
+  return c;
 }
 
-Coord Coord::FromString(absl::string_view str) {
-  auto result = TryParseString(str);
-  assert(result.first);
-  return result.second;
+Coord Coord::FromString(absl::string_view str, bool allow_invalid) {
+  auto c = TryParseString(str);
+  MG_CHECK(allow_invalid || c != Coord::kInvalid);
+  return c;
 }
 
 std::string Coord::ToKgs() const {
   if (*this == kPass) {
     return "pass";
+  } else if (*this == kResign) {
+    return "resign";
+  } else if (*this == kInvalid) {
+    return "invalid";
   }
   int row = value_ / kN;
   int col = value_ % kN;
@@ -99,9 +107,31 @@ std::string Coord::ToKgs() const {
   return absl::StrCat(col_str.substr(col, 1), kN - row);
 }
 
+std::string Coord::ToSgf() const {
+  if (*this == kPass) {
+    return "";
+  } else if (*this == kInvalid) {
+    return "invalid";
+  }
+
+  // We should not be writing resign moves to SGF files.
+  MG_CHECK(*this != kResign);
+
+  int row = value_ / kN;
+  int col = value_ % kN;
+  char buffer[2];
+  buffer[0] = 'a' + col;
+  buffer[1] = 'a' + row;
+  return {buffer, 2};
+}
+
 std::ostream& operator<<(std::ostream& os, Coord c) {
   if (c == Coord::kPass) {
     return os << "pass";
+  } else if (c == Coord::kResign) {
+    return os << "resign";
+  } else if (c == Coord::kInvalid) {
+    return os << "invalid";
   } else {
     uint16_t value = c;
     int row = value / kN;

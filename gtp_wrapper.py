@@ -12,121 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gtp
-import gtp_extensions
-
-import coords
-import datetime
-import go
-import random
-import sys
+from gtp_cmd_handlers import *
+import gtp_engine
 import os
 from dual_net import DualNetwork
-from strategies import MCTSPlayerMixin, CGOSPlayerMixin
+from strategies import MCTSPlayer, CGOSPlayer
 
 
-def translate_gtp_colors(gtp_color):
-    if gtp_color == gtp.BLACK:
-        return go.BLACK
-    elif gtp_color == gtp.WHITE:
-        return go.WHITE
-    else:
-        return go.EMPTY
-
-
-class GtpInterface(object):
-    def __init__(self):
-        self.size = 9
-        self.position = None
-        self.komi = 6.5
-
-    def set_size(self, n):
-        if n != go.N:
-            raise ValueError(("Can't handle boardsize {n}!"
-                              "Restart with env var BOARD_SIZE={n}").format(n=n))
-
-    def set_komi(self, komi):
-        self.komi = komi
-        self.position.komi = komi
-
-    def clear(self):
-        if self.position and len(self.position.recent) > 1:
-            try:
-                sgf = self.to_sgf()
-                with open(datetime.datetime.now().strftime("%Y-%m-%d-%H:%M.sgf"), 'w') as f:
-                    f.write(sgf)
-            except NotImplementedError:
-                pass
-            except:
-                print("Error saving sgf", file=sys.stderr, flush=True)
-        self.position = go.Position(komi=self.komi)
-        self.initialize_game(self.position)
-
-    def accomodate_out_of_turn(self, color):
-        if not translate_gtp_colors(color) == self.position.to_play:
-            self.position.flip_playerturn(mutate=True)
-
-    def make_move(self, color, vertex):
-        c = coords.from_pygtp(vertex)
-        # let's assume this never happens for now.
-        # self.accomodate_out_of_turn(color)
-        return self.play_move(c)
-
-    def get_move(self, color):
-        self.accomodate_out_of_turn(color)
-        move = self.suggest_move(self.position)
-        if self.should_resign():
-            return gtp.RESIGN
-        return coords.to_pygtp(move)
-
-    def final_score(self):
-        return self.position.result_string()
-
-    def showboard(self):
-        print('\n\n' + str(self.position) + '\n\n', file=sys.stderr)
-        return True
-
-    def should_resign(self):
-        raise NotImplementedError
-
-    def get_score(self):
-        return self.position.result_string()
-
-    def suggest_move(self, position):
-        raise NotImplementedError
-
-    def play_move(self, c):
-        raise NotImplementedError
-
-    def initialize_game(self):
-        raise NotImplementedError
-
-    def chat(self, msg_type, sender, text):
-        raise NotImplementedError
-
-    def to_sgf(self):
-        raise NotImplementedError
-
-
-class MCTSPlayer(MCTSPlayerMixin, GtpInterface):
-    pass
-
-
-class CGOSPlayer(CGOSPlayerMixin, GtpInterface):
-    pass
-
-
-def make_gtp_instance(read_file, readouts_per_move=100, verbosity=1, cgos_mode=False):
+def make_gtp_instance(read_file, readouts_per_move=100, verbosity=1, cgos_mode=False, kgs_mode=False):
     n = DualNetwork(read_file)
-    instance = MCTSPlayer(n, simulations_per_move=readouts_per_move,
-                          verbosity=verbosity, two_player_mode=True)
-    gtp_engine = gtp.Engine(instance)
     if cgos_mode:
-        instance = CGOSPlayer(n, seconds_per_move=5,
-                              verbosity=verbosity, two_player_mode=True)
+        player = CGOSPlayer(network=n, seconds_per_move=5, timed_match=True,
+                            verbosity=verbosity, two_player_mode=True)
     else:
-        instance = MCTSPlayer(n, simulations_per_move=readouts_per_move,
-                              verbosity=verbosity, two_player_mode=True)
-    name = "Somebot-" + os.path.basename(read_file)
-    gtp_engine = gtp_extensions.GTPDeluxe(instance, name=name)
-    return gtp_engine
+        player = MCTSPlayer(network=n, num_readouts=readouts_per_move,
+                            verbosity=verbosity, two_player_mode=True)
+
+    name = "Minigo-" + os.path.basename(read_file)
+    version = "0.2"
+
+    engine = gtp_engine.Engine()
+    engine.add_cmd_handler(
+        gtp_engine.EngineCmdHandler(engine, name, version))
+
+    if kgs_mode:
+        engine.add_cmd_handler(KgsCmdHandler(player))
+    engine.add_cmd_handler(RegressionsCmdHandler(player))
+    engine.add_cmd_handler(GoGuiCmdHandler(player))
+    engine.add_cmd_handler(MiniguiCmdHandler(player, courtesy_pass=kgs_mode))
+
+    return engine

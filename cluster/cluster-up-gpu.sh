@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Copyright 2018 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,20 +16,23 @@
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 source ${SCRIPT_DIR}/common.sh
 source ${SCRIPT_DIR}/utils.sh
 
+echo "GPU Cluster Creation"
+echo "--------------------------------------"
 echo "Using Project:      ${PROJECT}"
 echo "Using Zone:         ${ZONE}"
 echo "Using Cluster Name: ${CLUSTER_NAME}"
 echo "Using K8S Version:  ${K8S_VERSION}"
-echo "Number of Nodes:    ${NUM_K8S_NODES}"
+echo "Number of Nodes:    ${NUM_NODES}"
 
 check_gcloud_exists
 
 # Create a small Kubernetes gpu cluster.
 gcloud beta container clusters create \
-  --num-nodes ${NUM_K8S_NODES} \
+  --num-nodes ${NUM_NODES} \
   --accelerator type=nvidia-tesla-k80,count=1 \
   --machine-type n1-standard-2 \
   --disk-size 20 \

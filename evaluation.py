@@ -16,14 +16,14 @@
 
 import os
 import time
-import sgf_wrapper
+from absl import flags
+from tensorflow import gfile
 
 from gtp_wrapper import MCTSPlayer
+import sgf_wrapper
 
-SIMULTANEOUS_LEAVES = 8
 
-
-def play_match(black_net, white_net, games, readouts, sgf_dir, verbosity):
+def play_match(black_net, white_net, games, sgf_dir, verbosity):
     """Plays matches between two neural nets.
 
     black_net: Instance of minigo.DualNetwork, a wrapper around a tensorflow
@@ -31,13 +31,13 @@ def play_match(black_net, white_net, games, readouts, sgf_dir, verbosity):
     white_net: Instance of the minigo.DualNetwork.
     games: number of games to play. We play all the games at the same time.
     sgf_dir: directory to write the sgf results.
-    readouts: number of readouts to perform for each step in each game.
     """
+    readouts = flags.FLAGS.num_readouts  # Flag defined in strategies.py
 
     black = MCTSPlayer(
-        black_net, verbosity=verbosity, two_player_mode=True, num_parallel=SIMULTANEOUS_LEAVES)
+        black_net, verbosity=verbosity, two_player_mode=True)
     white = MCTSPlayer(
-        white_net, verbosity=verbosity, two_player_mode=True, num_parallel=SIMULTANEOUS_LEAVES)
+        white_net, verbosity=verbosity, two_player_mode=True)
 
     black_name = os.path.basename(black_net.save_file)
     white_name = os.path.basename(white_net.save_file)
@@ -71,7 +71,7 @@ def play_match(black_net, white_net, games, readouts, sgf_dir, verbosity):
             if active.is_done():
                 fname = "{:d}-{:s}-vs-{:s}-{:d}.sgf".format(int(time.time()),
                                                             white_name, black_name, i)
-                with open(os.path.join(sgf_dir, fname), 'w') as _file:
+                with gfile.GFile(os.path.join(sgf_dir, fname), 'w') as _file:
                     sgfstr = sgf_wrapper.make_sgf(active.position.recent,
                                                   active.result_string, black_name=black_name,
                                                   white_name=white_name)

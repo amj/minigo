@@ -14,8 +14,6 @@
 
 #include "cc/color.h"
 
-#include <cassert>
-
 namespace minigo {
 
 std::ostream& operator<<(std::ostream& os, Color color) {
@@ -23,11 +21,11 @@ std::ostream& operator<<(std::ostream& os, Color color) {
     case Color::kEmpty:
       return os << ".";
     case Color::kBlack:
-      return os << "X";
+      return os << "B";
     case Color::kWhite:
-      return os << "O";
+      return os << "W";
     default:
-      assert(false);
+      MG_CHECK(false);
       return os << "<" << static_cast<int>(color) << ">";
   }
 }

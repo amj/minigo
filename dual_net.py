@@ -18,29 +18,27 @@ This helps the intermediate layers extract concepts that are relevant to both
 move prediction and score estimation.
 """
 
-import collections
 import functools
 import math
-import numpy as np
 import os.path
-import itertools
-import sys
+
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.training.summary_io import SummaryWriterCache
-from tqdm import tqdm
-from typing import Dict
 
-import features
+import features as features_lib
+import go
 import preprocessing
 import symmetries
-import go
 
 # How many positions to look at per generation.
 # Per AGZ, 2048 minibatch * 1k = 2M positions/generation
 EXAMPLES_PER_GENERATION = 2000000
 
-# How many positions can fit on a graphics card. 256 for 9s, 16 or 32 for 19s.
-TRAIN_BATCH_SIZE = 16
+# How many positions can fit on the trainer; 256 for 19s on a p100
+TRAIN_BATCH_SIZE = 256
+
+VALIDATE_BATCH_SIZE = 32
 
 
 class DualNetwork():
@@ -69,7 +67,7 @@ class DualNetwork():
     def initialize_weights(self, save_file):
         """Initialize the weights from the given save_file.
         Assumes that the graph has been constructed, and the
-        save_file contains weights that match the graph. Used 
+        save_file contains weights that match the graph. Used
         to set the weights to a different version of the player
         without redifining the entire graph."""
         tf.train.Saver().restore(self.sess, save_file)
@@ -80,7 +78,7 @@ class DualNetwork():
         return probs[0], values[0]
 
     def run_many(self, positions, use_random_symmetry=True):
-        processed = list(map(features.extract_features, positions))
+        processed = list(map(features_lib.extract_features, positions))
         if use_random_symmetry:
             syms_used, processed = symmetries.randomize_symmetries_feat(
                 processed)
@@ -98,7 +96,7 @@ def get_inference_input():
 
     Returns the feature, output tensors that get passed into model_fn."""
     return (tf.placeholder(tf.float32,
-                           [None, go.N, go.N, features.NEW_FEATURES_PLANES],
+                           [None, go.N, go.N, features_lib.NEW_FEATURES_PLANES],
                            name='pos_tensor'),
             {'pi_tensor': tf.placeholder(tf.float32, [None, go.N * go.N + 1]),
              'value_tensor': tf.placeholder(tf.float32, [None])})
@@ -141,7 +139,7 @@ def model_fn(features, labels, mode, params, config=None):
     '''
     Args:
         features: tensor with shape
-            [BATCH_SIZE, go.N, go.N, features.NEW_FEATURES_PLANES]
+            [BATCH_SIZE, go.N, go.N, features_lib.NEW_FEATURES_PLANES]
         labels: dict from string to tensor with shape
             'pi_tensor': [BATCH_SIZE, go.N * go.N + 1]
             'value_tensor': [BATCH_SIZE]
@@ -159,6 +157,7 @@ def model_fn(features, labels, mode, params, config=None):
     return dict of tensors
         logits: [BATCH_SIZE, go.N * go.N + 1]
     '''
+    del config  # Unused
     my_batchn = functools.partial(
         tf.layers.batch_normalization,
         momentum=.997, epsilon=1e-5, fused=True, center=True, scale=True,
@@ -179,7 +178,7 @@ def model_fn(features, labels, mode, params, config=None):
 
     # the shared stack
     shared_output = initial_output
-    for i in range(params['num_shared_layers']):
+    for _ in range(params['num_shared_layers']):
         shared_output = my_res_layer(shared_output)
 
     # policy head
@@ -206,8 +205,8 @@ def model_fn(features, labels, mode, params, config=None):
     # train ops
     global_step = tf.train.get_or_create_global_step()
     policy_cost = tf.reduce_mean(
-        tf.nn.softmax_cross_entropy_with_logits(
-            logits=logits, labels=labels['pi_tensor']))
+        tf.nn.softmax_cross_entropy_with_logits_v2(
+        logits=logits, labels=tf.stop_gradient(labels['pi_tensor'])))
     value_cost = tf.reduce_mean(
         tf.square(value_output - labels['value_tensor']))
     l2_cost = params['l2_strength'] * tf.add_n([tf.nn.l2_loss(v)
@@ -215,8 +214,8 @@ def model_fn(features, labels, mode, params, config=None):
     combined_cost = policy_cost + value_cost + l2_cost
     policy_entropy = -tf.reduce_mean(tf.reduce_sum(
         policy_output * tf.log(policy_output), axis=1))
-    boundaries = [int(1e6), int(2e6)]
-    values = [1e-2, 1e-3, 1e-4]
+    boundaries = [40 * int(1e6), 80 * int(1e6)]
+    values = [1e-3, 1e-4, 1e-5]
     learning_rate = tf.train.piecewise_constant(
         global_step, boundaries, values)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -306,15 +305,19 @@ def export_model(working_dir, model_path):
         tf.gfile.Copy(filename, destination_path)
 
 
-def train(working_dir, tf_records, generation_num, **hparams):
-    assert generation_num > 0, "Model 0 is random weights"
+def train(working_dir, tf_records, steps=None, **hparams):
     estimator = get_estimator(working_dir, **hparams)
-    max_steps = generation_num * EXAMPLES_PER_GENERATION // TRAIN_BATCH_SIZE
 
-    def input_fn(): return preprocessing.get_input_tensors(
-        TRAIN_BATCH_SIZE, tf_records)
+    def input_fn():
+        return preprocessing.get_input_tensors(TRAIN_BATCH_SIZE, tf_records,
+                                               filter_amount=1.0)
+
     update_ratio_hook = UpdateRatioSessionHook(working_dir)
-    estimator.train(input_fn, hooks=[update_ratio_hook], max_steps=max_steps)
+    step_counter_hook = EchoStepCounterHook(output_dir=working_dir)
+    if steps is None:
+        steps = EXAMPLES_PER_GENERATION // TRAIN_BATCH_SIZE
+    estimator.train(input_fn, hooks=[
+                        update_ratio_hook, step_counter_hook], steps=steps)
 
 
 def validate(working_dir, tf_records, checkpoint_name=None, **hparams):
@@ -322,10 +325,10 @@ def validate(working_dir, tf_records, checkpoint_name=None, **hparams):
     if checkpoint_name is None:
         checkpoint_name = estimator.latest_checkpoint()
 
-    def input_fn(): return preprocessing.get_input_tensors(
-        TRAIN_BATCH_SIZE, tf_records, shuffle_buffer_size=1000,
-        filter_amount=0.05)
-    estimator.evaluate(input_fn, steps=1000)
+    def input_fn():
+        return preprocessing.get_input_tensors(VALIDATE_BATCH_SIZE, tf_records,
+            shuffle_buffer_size=20000, filter_amount=0.05)
+    estimator.evaluate(input_fn, steps=500)
 
 
 def compute_update_ratio(weight_tensors, before_weights, after_weights):
@@ -342,10 +345,18 @@ def compute_update_ratio(weight_tensors, before_weights, after_weights):
     return tf.Summary(value=all_summaries)
 
 
+class EchoStepCounterHook(tf.train.StepCounterHook):
+    def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
+        s_per_sec = elapsed_steps / elapsed_time
+        print("{:.3f} steps per second".format(s_per_sec))
+        super()._log_and_record(elapsed_steps, elapsed_time, global_step)
+
+
 class UpdateRatioSessionHook(tf.train.SessionRunHook):
     def __init__(self, working_dir, every_n_steps=100):
         self.working_dir = working_dir
         self.every_n_steps = every_n_steps
+        self.before_weights = None
 
     def begin(self):
         # These calls only works because the SessionRunHook api guarantees this
@@ -362,7 +373,7 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
 
     def after_run(self, run_context, run_values):
         global_step = run_context.session.run(self.global_step)
-        if global_step % self.every_n_steps == 0:
+        if self.before_weights is not None:
             after_weights = run_context.session.run(self.weight_tensors)
             weight_update_summaries = compute_update_ratio(
                 self.weight_tensors, self.before_weights, after_weights)

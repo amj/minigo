@@ -17,6 +17,8 @@
 
 #include <iostream>
 
+#include "cc/check.h"
+
 namespace minigo {
 
 // Color represents the stone color of each point on the board.
@@ -27,6 +29,11 @@ enum class Color {
   kBlack,
   kWhite,
 };
+
+inline Color OtherColor(Color color) {
+  MG_CHECK(color == Color::kWhite || color == Color::kBlack);
+  return color == Color::kWhite ? Color::kBlack : Color::kWhite;
+}
 
 std::ostream& operator<<(std::ostream& os, Color color);
 

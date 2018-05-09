@@ -22,7 +22,7 @@ export CLUSTER_NAME=${CLUSTER_NAME:-"minigo-v5"}
 export BOARD_SIZE=${BOARD_SIZE:-"19"}
 export K8S_VERSION=${K8S_VERSION:-"1.9"}
 export ZONE=${ZONE:-"asia-east1-a"}
-export NUM_K8S_NODES=${NUM_K8S_NODES:-"5"}
+export NUM_K8S_NODES=${NUM_NODES:-"5"}
 
 # Configuration for service accounts so that the cluster can do cloud-things.
 export SERVICE_ACCOUNT=${SERVICE_ACCOUNT:-"${PROJECT}-${CLUSTER_NAME}-services"}
@@ -34,6 +34,8 @@ export VERSION_TAG=${VERSION_TAG:-"0.16"}
 export GPU_PLAYER_CONTAINER=${GPU_PLAYER_CONTAINER:-"minigo-gpu-player"}
 export GPU_EVALUATOR_CONTAINER=${GPU_EVALUATOR_CONTAINER:-"minigo-gpu-evaluator"}
 export CPU_PLAYER_CONTAINER=${CPU_PLAYER_CONTAINER:-"minigo-player"}
+export CC_PLAYER_CONTAINER=${CC_PLAYER_CONTAINER:-"minigo-cc-player"}
+export MINIGUI_PY_CPU_CONTAINER=${MINIGUI_PY_CPU_CONTAINER:-"minigui-py-cpu-v2"}
 
 # Bucket names live in a single global namespace
 # So, we prefix the project name to avoid collisions

@@ -12,9 +12,12 @@ ignore=
       # coords.py,
       dual_net.py,
       # evaluation.py,
+      example_buffer.py,
       features.py,
+      fsdb.py,
       go.py,
-      gtp_extensions.py,
+      gtp_cmd_handlers.py,
+      gtp_engine.py,
       gtp_wrapper.py,
       local_rl_loop.py,
       main.py,
@@ -23,10 +26,10 @@ ignore=
       rl_loop.py,
       selfplay_mcts.py,
       sgf_wrapper.py,
-      shipname.py,
+      # shipname.py,
       strategies.py,
       symmetries.py,
-      utils.py,
+      # utils.py,
 
 # Add files or directories matching the regex patterns to the blacklist. The
 # regex matches against base names, not paths.
@@ -75,8 +78,10 @@ confidence=
 # --disable=W"
 
 disable=bare-except,
-        too-many-locals,
-        too-many-arguments
+        invalid-name,
+        too-few-methods,
+        too-many-arguments,
+        too-many-locals
         # print-statement,
         # parameter-unpacking,
         # unpacking-in-except,

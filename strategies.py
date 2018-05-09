@@ -12,23 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-import math
 import os
 import random
 import sys
 import time
-import sgf_wrapper
+
+from absl import flags
+import numpy as np
 
 import coords
-import gtp
-import numpy as np
-from mcts import MCTSNode, MAX_DEPTH
-
 import go
+import mcts
+import sgf_wrapper
 
-# When to do deterministic move selection.  ~30 moves on a 19x19, ~8 on 9x9
-TEMPERATURE_CUTOFF = int((go.N * go.N) / 12)
+from player_interface import MCTSPlayerInterface
+
+flags.DEFINE_integer('softpick_move_cutoff', (go.N * go.N // 12) // 2 * 2,
+                     'The move number (<=) up to which moves are softpicked from MCTS visits.')
+# Ensure that both white and black have an equal number of softpicked moves.
+flags.register_validator('softpick_move_cutoff', lambda x: x % 2 == 0)
+
+flags.DEFINE_float('resign_threshold', -0.9,
+                   'The post-search Q evaluation at which resign should happen.'
+                   'A threshold of -1 implies resign is disabled.')
+flags.register_validator('resign_threshold', lambda x: -1 <= x < 0)
+
+flags.DEFINE_integer('num_readouts', 800,
+                     'Number of searches to add to the MCTS search tree before playing a move.')
+flags.register_validator('num_readouts', lambda x: x > 0)
+
+flags.DEFINE_integer('parallel_readouts', 8,
+                     'Number of searches to execute in parallel. This is also the batch size'
+                     'for neural network evaluation.')
+
+FLAGS = flags.FLAGS
 
 
 def time_recommendation(move_num, seconds_per_move=5, time_limit=15*60,
@@ -60,35 +77,44 @@ def time_recommendation(move_num, seconds_per_move=5, time_limit=15*60,
     return base_time * decay_factor ** max(player_move_num - core_moves, 0)
 
 
-class MCTSPlayerMixin:
-    # If `simulations_per_move` is nonzero, it will perform that many reads
-    # before playing. Otherwise, it uses `seconds_per_move` of wall time.
-    def __init__(self, network, seconds_per_move=5, simulations_per_move=0,
-                 resign_threshold=-0.90, verbosity=0, two_player_mode=False,
-                 num_parallel=8):
+class MCTSPlayer(MCTSPlayerInterface):
+    def __init__(self, network, seconds_per_move=5, num_readouts=0,
+                 resign_threshold=None, verbosity=0, two_player_mode=False,
+                 timed_match=False):
         self.network = network
         self.seconds_per_move = seconds_per_move
-        self.simulations_per_move = simulations_per_move
+        self.num_readouts = num_readouts or FLAGS.num_readouts
         self.verbosity = verbosity
         self.two_player_mode = two_player_mode
         if two_player_mode:
             self.temp_threshold = -1
         else:
-            self.temp_threshold = TEMPERATURE_CUTOFF
-        self.num_parallel = num_parallel
+            self.temp_threshold = FLAGS.softpick_move_cutoff
         self.qs = []
         self.comments = []
         self.searches_pi = []
         self.root = None
         self.result = 0
         self.result_string = None
-        self.resign_threshold = -abs(resign_threshold)
+        self.resign_threshold = resign_threshold or FLAGS.resign_threshold
+        self.timed_match = timed_match
+        assert (self.timed_match and self.seconds_per_move >
+                0) or self.num_readouts > 0
         super().__init__()
+
+    def get_position(self):
+        return self.root.position if self.root else None
+
+    def get_root(self):
+        return self.root
+
+    def get_result_string(self):
+        return self.result_string
 
     def initialize_game(self, position=None):
         if position is None:
             position = go.Position()
-        self.root = MCTSNode(position)
+        self.root = mcts.MCTSNode(position)
         self.result = 0
         self.result_string = None
         self.comments = []
@@ -102,16 +128,16 @@ class MCTSPlayerMixin:
         '''
         start = time.time()
 
-        if self.simulations_per_move == 0:
+        if self.timed_match:
             while time.time() - start < self.seconds_per_move:
                 self.tree_search()
         else:
             current_readouts = self.root.N
-            while self.root.N < current_readouts + self.simulations_per_move:
+            while self.root.N < current_readouts + self.num_readouts:
                 self.tree_search()
             if self.verbosity > 0:
                 print("%d: Searched %d times in %s seconds\n\n" % (
-                    position.n, self.simulations_per_move, time.time() - start), file=sys.stderr)
+                    position.n, self.num_readouts, time.time() - start), file=sys.stderr)
 
         # print some stats on anything with probability > 1%
         if self.verbosity > 2:
@@ -132,7 +158,7 @@ class MCTSPlayerMixin:
         '''
         if not self.two_player_mode:
             self.searches_pi.append(
-                self.root.children_as_pi(self.root.position.n < self.temp_threshold))
+                self.root.children_as_pi(self.root.position.n <= self.temp_threshold))
         self.qs.append(self.root.Q)  # Save our resulting Q.
         self.comments.append(self.root.describe())
         try:
@@ -153,22 +179,22 @@ class MCTSPlayerMixin:
 
         Highest N is most robust indicator. In the early stage of the game, pick
         a move weighted by visit count; later on, pick the absolute max.'''
-        if self.root.position.n > self.temp_threshold:
+        if self.root.position.n >= self.temp_threshold:
             fcoord = np.argmax(self.root.child_N)
         else:
             cdf = self.root.child_N.cumsum()
-            cdf /= cdf[-1]
+            cdf /= cdf[-2]  # Prevents passing via softpick.
             selection = random.random()
             fcoord = cdf.searchsorted(selection)
             assert self.root.child_N[fcoord] != 0
         return coords.from_flat(fcoord)
 
-    def tree_search(self, num_parallel=None):
-        if num_parallel is None:
-            num_parallel = self.num_parallel
+    def tree_search(self, parallel_readouts=None):
+        if parallel_readouts is None:
+            parallel_readouts = FLAGS.parallel_readouts
         leaves = []
         failsafe = 0
-        while len(leaves) < num_parallel and failsafe < num_parallel * 2:
+        while len(leaves) < parallel_readouts and failsafe < parallel_readouts * 2:
             failsafe += 1
             leaf = self.root.select_leaf()
             if self.verbosity >= 4:
@@ -186,6 +212,7 @@ class MCTSPlayerMixin:
             for leaf, move_prob, value in zip(leaves, move_probs, values):
                 leaf.revert_virtual_loss(up_to=self.root)
                 leaf.incorporate_results(move_prob, value, up_to=self.root)
+        return leaves
 
     def show_path_to_root(self, node):
         pos = node.position
@@ -196,11 +223,14 @@ class MCTSPlayerMixin:
         def fmt(move): return "{}-{}".format('b' if move.color == 1 else 'w',
                                              coords.to_kgs(move.move))
         path = " ".join(fmt(move) for move in pos.recent[-diff:])
-        if node.position.n >= MAX_DEPTH:
+        if node.position.n >= FLAGS.max_game_length:
             path += " (depth cutoff reached) %0.1f" % node.position.score()
         elif node.position.is_game_over():
             path += " (game over) %0.1f" % node.position.score()
         return path
+
+    def is_done(self):
+        return self.result != 0 or self.root.is_done()
 
     def should_resign(self):
         '''Returns true if the player resigned.  No further moves should be played'''
@@ -230,9 +260,6 @@ class MCTSPlayerMixin:
                                         self.network.save_file) or "Unknown",
                                     comments=comments)
 
-    def is_done(self):
-        return self.result != 0 or self.root.is_done()
-
     def extract_data(self):
         assert len(self.searches_pi) == self.root.position.n
         assert self.result != 0
@@ -240,26 +267,14 @@ class MCTSPlayerMixin:
                            self.searches_pi):
             yield pwc.position, pi, pwc.result
 
-    def chat(self, msg_type, sender, text):
-        default_response = "Supported commands are 'winrate', 'nextplay', 'fortune', and 'help'."
-        if self.root is None or self.root.position.n == 0:
-            return "I'm not playing right now.  " + default_response
+    def get_num_readouts(self):
+        return self.num_readouts
 
-        if 'winrate' in text.lower():
-            wr = (abs(self.root.Q) + 1.0) / 2.0
-            color = "Black" if self.root.Q > 0 else "White"
-            return "{:s} {:.2f}%".format(color, wr * 100.0)
-        elif 'nextplay' in text.lower():
-            return "I'm thinking... " + self.root.most_visited_path()
-        elif 'fortune' in text.lower():
-            return "You're feeling lucky!"
-        elif 'help' in text.lower():
-            return "I can't help much with go -- try ladders!  Otherwise: " + default_response
-        else:
-            return default_response
+    def set_num_readouts(self, readouts):
+        self.num_readouts = readouts
 
 
-class CGOSPlayerMixin(MCTSPlayerMixin):
+class CGOSPlayer(MCTSPlayer):
     def suggest_move(self, position):
         self.seconds_per_move = time_recommendation(position.n)
         return super().suggest_move(position)
