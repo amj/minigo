@@ -42,7 +42,10 @@ then
     --mode=selfplay \
     --resign_threshold=0.88 \
     --output_dir="gs://$BUCKET_NAME/data/selfplay/$BASENAME" \
-    --sgf_dir="gs://$BUCKET_NAME/sgf/$BASENAME"
+    --sgf_dir="./sgf/"
+  echo Copying Files.
+  gsutil cp sgf/clean/* gs://$BUCKET_NAME/sgf/clean/$BASENAME
+  gsutil cp sgf/full/* gs://$BUCKET_NAME/sgf/full/$BASENAME
   echo Finished a set of games!
 else
   echo "$NAME has enough games ($GAMES)"
