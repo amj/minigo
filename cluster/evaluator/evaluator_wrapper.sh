@@ -27,7 +27,7 @@ echo white:  $MODEL_WHITE
 python3 main.py evaluate \
   $MODEL_BLACK $MODEL_WHITE \
   --output-dir "gs://$BUCKET_NAME/sgf/eval" \
-  --readouts=1000 \
+  --num_readouts=1000 \
   --games=1 \
   --verbose=2
 

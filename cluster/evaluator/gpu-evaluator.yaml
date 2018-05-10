@@ -4,7 +4,7 @@ metadata:
   name: minigo-gpu-evaluator-{{bnum}}-{{wnum}}
 spec:
   parallelism: 2
-  completions: 4
+  completions: 10
   template:
     metadata:
       name: gpu-evaluator
@@ -21,10 +21,6 @@ spec:
         volumeMounts:
         - name: service-credentials
           mountPath: /etc/credentials
-        - mountPath: /usr/local/bin/nvidia
-          name: nvidia-debug-tools
-        - mountPath: /usr/local/nvidia/lib64
-          name: nvidia-libraries
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /etc/credentials/service-account.json
@@ -44,10 +40,4 @@ spec:
       - name: service-credentials
         secret:
           secretName: $SERVICE_ACCOUNT-creds
-      - hostPath:
-          path: /home/kubernetes/bin/nvidia/bin
-        name: nvidia-debug-tools
-      - hostPath:
-          path: /home/kubernetes/bin/nvidia/lib64
-        name: nvidia-libraries
       restartPolicy: OnFailure

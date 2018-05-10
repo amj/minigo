@@ -1,13 +1,15 @@
 import sys
 sys.path.insert(0, '.')
 
+from absl import flags
 import jinja2
 import kubernetes
+import argparse
 import yaml
 import json
 import os
 import argh
-import rl_loop
+import fsdb
 import random
 import time
 
@@ -17,11 +19,11 @@ def launch_eval(black_num=0, white_num=0):
         print("Need real model numbers")
         return
 
-    b = rl_loop.get_model(black_num)
-    w = rl_loop.get_model(white_num)
+    b = fsdb.get_model(black_num)
+    w = fsdb.get_model(white_num)
 
-    b_model_path = os.path.join(rl_loop.MODELS_DIR, b)
-    w_model_path = os.path.join(rl_loop.MODELS_DIR, w)
+    b_model_path = os.path.join(fsdb.models_dir(), b)
+    w_model_path = os.path.join(fsdb.models_dir(), w)
 
     kubernetes.config.load_kube_config()
     configuration = kubernetes.client.Configuration()
@@ -58,7 +60,7 @@ def zoo_loop():
 
     try:
         while len(desired_pairs) > 0:
-            last_model = rl_loop.get_latest_model()[0]
+            last_model = fsdb.get_latest_model()[0]
             if last_model_queued < last_model:
                 print("Adding models {} to {} to be scheduled".format(
                     last_model_queued+1, last_model))
@@ -137,8 +139,11 @@ def make_pairs_for_model(model_num=0):
               for i in range(20, 51, 5)if model_num - i > 0]
     return pairs
 
+parser = argparse.ArgumentParser()
+argh.add_commands(parser, [zoo_loop, launch_eval])
 
 if __name__ == '__main__':
-    argh.dispatch_command(zoo_loop)
+    remaining_argv = flags.FLAGS(sys.argv, known_only=True)
+    argh.dispatch(parser, argv=remaining_argv[1:])
     #for i in range(270, 280, 1):
     #    make_pairs(i)
