@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: minigo-gpu-evaluator-{{bnum}}-{{wnum}}
 spec:
-  parallelism: 2
+  parallelism: 4
   completions: 10
   template:
     metadata:
@@ -34,8 +34,6 @@ spec:
           value: {{ black }}
         - name: LD_LIBRARY_PATH
           value: /usr/local/nvidia/lib64
-        securityContext:
-          privileged: true
       volumes:
       - name: service-credentials
         secret:

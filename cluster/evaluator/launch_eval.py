@@ -48,16 +48,17 @@ def launch_eval(black_num=0, white_num=0):
 
     resp = api_instance.create_namespaced_job('default', body=job_conf)
 
+def get_api():
+    kubernetes.config.load_kube_config(persist_config=True)
+    configuration = kubernetes.client.Configuration()
+    return kubernetes.client.BatchV1Api(
+        kubernetes.client.ApiClient(configuration))
 
 def zoo_loop():
     desired_pairs = restore_pairs()
     last_model_queued = restore_last_model()
 
-    kubernetes.config.load_kube_config(persist_config=True)
-    configuration = kubernetes.client.Configuration()
-    api_instance = kubernetes.client.BatchV1Api(
-        kubernetes.client.ApiClient(configuration))
-
+    api_instance = get_api()
     try:
         while len(desired_pairs) > 0:
             last_model = fsdb.get_latest_model()[0]
@@ -69,7 +70,7 @@ def zoo_loop():
                 last_model_queued = last_model
                 save_last_model(last_model)
 
-            cleanup_finished_jobs(api_instance)
+            cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
             if len(r.items) < 15:
                 next_pair = desired_pairs.pop()  # take our pair off
@@ -117,7 +118,8 @@ def restore_last_model():
     return last_model
 
 
-def cleanup_finished_jobs(api):
+def cleanup(api_instance=None):
+    api = api_instance or get_api()
     r = api.list_job_for_all_namespaces()
     delete_opts = kubernetes.client.V1DeleteOptions()
     for job in r.items:
@@ -126,6 +128,10 @@ def cleanup_finished_jobs(api):
             resp = api.delete_namespaced_job(
                 job.metadata.name, 'default', body=delete_opts)
 
+def backpair(model_num=0):
+    pairs = make_pairs_for_model(model_num)
+    for p in pairs:
+        launch_eval(*p)
 
 def make_pairs_for_model(model_num=0):
     if model_num == 0:
@@ -140,7 +146,7 @@ def make_pairs_for_model(model_num=0):
     return pairs
 
 parser = argparse.ArgumentParser()
-argh.add_commands(parser, [zoo_loop, launch_eval])
+argh.add_commands(parser, [zoo_loop, launch_eval, backpair, cleanup])
 
 if __name__ == '__main__':
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)

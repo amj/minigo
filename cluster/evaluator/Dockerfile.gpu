@@ -3,6 +3,7 @@ FROM nvidia/cuda:9.0-base-ubuntu16.04
 
 RUN apt update && apt-get install -y --no-install-recommends \
         build-essential \
+        bc \
         cuda-command-line-tools-9-0 \
         cuda-cublas-9-0 \
         cuda-cufft-9-0 \
