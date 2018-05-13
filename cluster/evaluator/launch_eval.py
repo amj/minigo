@@ -48,19 +48,21 @@ def launch_eval(black_num=0, white_num=0):
 
     resp = api_instance.create_namespaced_job('default', body=job_conf)
 
+
 def get_api():
     kubernetes.config.load_kube_config(persist_config=True)
     configuration = kubernetes.client.Configuration()
     return kubernetes.client.BatchV1Api(
         kubernetes.client.ApiClient(configuration))
 
+
 def zoo_loop():
-    desired_pairs = restore_pairs()
+    desired_pairs = restore_pairs() or []
     last_model_queued = restore_last_model()
 
     api_instance = get_api()
     try:
-        while len(desired_pairs) > 0:
+        while True:
             last_model = fsdb.get_latest_model()[0]
             if last_model_queued < last_model:
                 print("Adding models {} to {} to be scheduled".format(
@@ -72,7 +74,10 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 15:
+            if len(r.items) < 20:
+                if not desired_pairs:
+                    time.sleep(60*5)
+                    continue
                 next_pair = desired_pairs.pop()  # take our pair off
                 print("Enqueuing:", next_pair)
                 try:
@@ -87,7 +92,6 @@ def zoo_loop():
                 print("{}\t{} jobs outstanding.".format(
                     time.strftime("%I:%M:%S %p"), len(r.items)))
             time.sleep(30)
-        print("All pairs finished")
     except:
         print("Unfinished pairs:")
         print(sorted(desired_pairs))
@@ -128,10 +132,12 @@ def cleanup(api_instance=None):
             resp = api.delete_namespaced_job(
                 job.metadata.name, 'default', body=delete_opts)
 
+
 def backpair(model_num=0):
     pairs = make_pairs_for_model(model_num)
     for p in pairs:
         launch_eval(*p)
+
 
 def make_pairs_for_model(model_num=0):
     if model_num == 0:
@@ -144,6 +150,7 @@ def make_pairs_for_model(model_num=0):
     pairs += [[model_num, model_num - i]
               for i in range(20, 51, 5)if model_num - i > 0]
     return pairs
+
 
 parser = argparse.ArgumentParser()
 argh.add_commands(parser, [zoo_loop, launch_eval, backpair, cleanup])
