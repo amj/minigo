@@ -53,9 +53,8 @@ class BoardVisitor {
   // Starts a new visit around the board.
   void Begin() {
     MG_DCHECK(Done());
-    if (epoch_++ == 0) {
-      memset(visited_.data(), 0, sizeof(visited_));
-    }
+    epoch_ = 1;
+    memset(visited_.data(), 0, sizeof(visited_));
   }
 
   // Returns true when there are no more points to visit.
@@ -94,9 +93,8 @@ class GroupVisitor {
   GroupVisitor() = default;
 
   void Begin() {
-    if (epoch_++ == 0) {
-      memset(visited_.data(), 0, sizeof(visited_));
-    }
+    epoch_ = 1;
+    memset(visited_.data(), 0, sizeof(visited_));
   }
 
   bool Visit(GroupId id) {

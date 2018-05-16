@@ -120,6 +120,7 @@ std::string Position::ToGroupString() const {
         oss << std::setw(2) << s.group_id() << " ";
       }
     }
+    oss << kPrintNormal << std::setw(2) << (kN - row);
     oss << "\n";
   }
   oss << kPrintNormal;
