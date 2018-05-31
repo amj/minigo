@@ -110,6 +110,9 @@ class GtpPlayer : public MctsPlayer {
   Response HandleInfo(absl::string_view cmd,
                       const std::vector<absl::string_view>& args);
 
+  Response HandleKomiCommand(absl::string_view cmd,
+                             const std::vector<absl::string_view>& args);
+
   Response HandleKnownCommand(absl::string_view cmd,
                               const std::vector<absl::string_view>& args);
 
