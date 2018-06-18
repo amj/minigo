@@ -113,8 +113,8 @@ def read_tf_records(batch_size, tf_records, num_repeats=1,
     if shuffle_examples and not shuffle_buffer_size:
         raise ValueError("Must set shuffle buffer size if shuffling examples")
 
+    tf_records = list(tf_records)
     if shuffle_records:
-        tf_records = list(tf_records)
         random.shuffle(tf_records)
     record_list = tf.data.Dataset.from_tensor_slices(tf_records)
 
@@ -191,7 +191,7 @@ def get_input_tensors(batch_size, tf_records, num_repeats=None,
 
 def get_tpu_input_tensors(batch_size, tf_records):
     dataset = read_tf_records(batch_size, tf_records, shuffle_records=True,
-        shuffle_buffer_size=1024, num_repeats=None)
+        shuffle_buffer_size=1024, num_repeats=1)
     # TODO take a bfloat16 param and cast the dataset/labels to bfloat16
     # TODO? use tf.contrib.data.map_and_batch?
     dataset = dataset.map(functools.partial(
