@@ -148,6 +148,8 @@ def wrapped_model_inference_fn(config):
         policy_output, value_output, _ = dual_net.model_inference_fn(
             features, False)
 
+
+
         # Flatten model outputs.
         flat_policy = tf.reshape(policy_output, [-1], name="flatten_policy")
         flat_value = value_output  # value_output is already flat.
@@ -173,10 +175,16 @@ def wrapped_model_inference_fn(config):
 
         return a, response[0]
 
-    loop_vars = [0, ""]
-    return tf.while_loop(loop_condition, loop_body, loop_vars,
+    loop_vars = [tf.Variable(0,name="loop_placeholder"), ""]
+    loop = tf.while_loop(loop_condition, loop_body, loop_vars,
                          name="inference_worker_loop")
 
+    if flags.FLAGS.use_tpu:
+        return tpu_estimator.TPUEstimatorSpec(
+                mode=tf.estimator.ModeKeys.PREDICT,
+                predictions={'loop': loop})
+    else:
+        return loop
 
 def main():
     """Runs the inference worker."""
@@ -196,15 +204,41 @@ def main():
         descriptor_path=FLAGS.descriptor)
 
     print("building graph")
-    tf_config = tf.ConfigProto()
-    tf_config.gpu_options.allow_growth = True
-    sess = tf.Session(graph=tf.Graph(), config=tf_config)
-    with sess.graph.as_default():
-        loop = wrapped_model_inference_fn(worker_config)
-        tf.train.Saver().restore(sess, FLAGS.model)
+    if FLAGS.use_tpu:
+        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+            FLAGS.tpu_name, zone=None, project=None)
 
-    print("running graph")
-    sess.run(loop)
+        config = tpu_config.RunConfig(
+            cluster=tpu_cluster_resolver,
+            model_dir=working_dir,
+            save_checkpoints_steps=max(600, FLAGS.iterations_per_loop),
+            tpu_config=tpu_config.TPUConfig(
+                iterations_per_loop=FLAGS.iterations_per_loop,
+                num_shards=FLAGS.num_tpu_cores,
+                per_host_input_for_training=tpu_config.InputPipelineConfig.PER_HOST_V2))  # pylint: disable=line-too-long
+
+        estimator = tpu_estimator.TPUEstimator(
+            use_tpu=FLAGS.use_tpu,
+            model_fn=functools.partial(wrapped_model_inference_fn(worker_config=worker_config)),
+            config=config,
+            predict_batch_size=8)
+
+        def input_fn_tpu():
+                return tf.data.Dataset.from_tensor_slices([tf.constant(0)])
+
+        for item in estimator.predict(input_fn=input_fn_tpu):
+            print('yay')
+
+    else:
+        tf_config = tf.ConfigProto()
+        tf_config.gpu_options.allow_growth = True
+        sess = tf.Session(graph=tf.Graph(), config=tf_config)
+        with sess.graph.as_default():
+            loop = wrapped_model_inference_fn(worker_config)
+            tf.train.Saver().restore(sess, FLAGS.model)
+
+        print("running graph")
+        sess.run(loop)
 
 
 if __name__ == "__main__":
