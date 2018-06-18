@@ -34,7 +34,6 @@
 #ifndef MINIGO_DISABLE_INFERENCE_SERVER
 #include "cc/dual_net/inference_server.h"
 #endif
-#include "cc/dual_net/tf_dual_net.h"
 #include "cc/file/filesystem.h"
 #include "cc/file/path.h"
 #include "cc/gtp_player.h"
@@ -42,7 +41,6 @@
 #include "cc/mcts_player.h"
 #include "cc/random.h"
 #include "cc/sgf.h"
-#include "cc/tf_utils.h"
 #include "gflags/gflags.h"
 
 DEFINE_uint64(seed, 0,
@@ -128,6 +126,7 @@ std::string GetOutputName() {
   return absl::StrCat(timestamp, "-", hostname);
 }
 
+/*
 void WriteExample(const std::string& output_dir, const std::string& output_name,
                   const MctsPlayer& player) {
   MG_CHECK(file::RecursivelyCreateDir(output_dir));
@@ -148,6 +147,7 @@ void WriteExample(const std::string& output_dir, const std::string& output_name,
   auto output_path = file::JoinPath(output_dir, output_name + ".tfrecord.zz");
   tf_utils::WriteTfExamples(output_path, examples);
 }
+*/
 
 void WriteSgf(const std::string& output_dir, const std::string& output_name,
               const MctsPlayer& player_b, const MctsPlayer& player_w,
@@ -192,7 +192,7 @@ void WriteSgf(const std::string& output_dir, const std::string& output_name,
   auto sgf_str = sgf::CreateSgfString(moves, options);
 
   auto output_path = file::JoinPath(output_dir, output_name + ".sgf");
-  TF_CHECK_OK(tf_utils::WriteFile(output_path, sgf_str));
+  //TF_CHECK_OK(tf_utils::WriteFile(output_path, sgf_str));
 }
 
 void WriteSgf(const std::string& output_dir, const std::string& output_name,
@@ -231,10 +231,10 @@ void SelfPlay() {
     server = absl::make_unique<InferenceServer>(FLAGS_port);
     dual_net = server->NewDualNet();
   } else {
-    dual_net = absl::make_unique<TfDualNet>(FLAGS_model);
+    //dual_net = absl::make_unique<TfDualNet>(FLAGS_model);
   }
 #else
-  auto dual_net = absl::make_unique<TfDualNet>(FLAGS_model);
+  //auto dual_net = absl::make_unique<TfDualNet>(FLAGS_model);
 #endif
 
   auto player = absl::make_unique<MctsPlayer>(std::move(dual_net), options);
@@ -255,7 +255,7 @@ void SelfPlay() {
 
   // Write example outputs.
   if (!output_dir.empty()) {
-    WriteExample(output_dir, output_name, *player);
+    //WriteExample(output_dir, output_name, *player);
   }
 
   // Write SGF.
@@ -266,6 +266,7 @@ void SelfPlay() {
   }
 }
 
+/*
 void Eval() {
   MctsPlayer::Options options;
   ParseMctsPlayerOptionsFromFlags(&options);
@@ -315,6 +316,7 @@ void Gtp() {
       absl::make_unique<TfDualNet>(FLAGS_model), options);
   player->Run();
 }
+*/
 
 }  // namespace
 
@@ -326,9 +328,9 @@ int main(int argc, char* argv[]) {
   if (FLAGS_mode == "selfplay") {
     minigo::SelfPlay();
   } else if (FLAGS_mode == "eval") {
-    minigo::Eval();
+  //  minigo::Eval();
   } else if (FLAGS_mode == "gtp") {
-    minigo::Gtp();
+    //minigo::Gtp();
   } else {
     std::cerr << "Unrecognized mode \"" << FLAGS_mode << "\"\n";
     return 1;

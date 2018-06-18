@@ -13,21 +13,7 @@ load(
     "minigo_cc_test_9_only",
 )
 
-cc_library(
-    name = "tensorflow",
-    srcs = [
-        "tensorflow/libtensorflow_cc.so",
-        "tensorflow/libtensorflow_framework.so",
-    ],
-    hdrs = glob(
-        ["tensorflow/**/*"],
-        exclude = ["tensorflow/*.so"],
-    ),
-    includes = [
-        "tensorflow",
-        "tensorflow/external/nsync/public",
-    ],
-)
+
 
 minigo_cc_library(
     name = "base",
@@ -320,9 +306,7 @@ minigo_cc_binary(
         ":mcts",
         ":random",
         ":sgf",
-        ":tf_utils",
         "//cc/dual_net:inference_server",
-        "//cc/dual_net:tf_dual_net",
         "//cc/file",
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/memory",

@@ -64,6 +64,7 @@ class ServiceImpl final : public InferenceService::Service {
     std::vector<RemoteInference> batch;
 
     {
+      printf("Got RPC request\n");
       // Lock batch_mutex_ while popping inference requests off the
       // request_queue_: we want make sure that each request fills up as much
       // of a batch as possible. If multiple threads all popped inference

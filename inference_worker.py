@@ -32,6 +32,11 @@ from proto import inference_service_pb2_grpc
 import dual_net
 import features as features_lib
 import go
+import functools
+
+from tensorflow.contrib.tpu.python.tpu import tpu_config
+from tensorflow.contrib.tpu.python.tpu import tpu_estimator
+from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 
 flags.DEFINE_string("model", "", "Path to the TensorFlow model.")
 flags.DEFINE_string("address", "localhost:50051", "Inference server address.")
@@ -67,12 +72,13 @@ def get_server_config():
             channel = grpc.insecure_channel(FLAGS.address)
             stub = inference_service_pb2_grpc.InferenceServiceStub(channel)
             return stub.GetConfig(inference_service_pb2.GetConfigRequest())
-        except Exception:  # pylint: disable=broad-except
+        except Exception as e:  # pylint: disable=broad-except
             print("Waiting for server")
+            print(e)
             time.sleep(1)
 
 
-def wrapped_model_inference_fn(config):
+def wrapped_model_inference_fn(config, features, params):
     """Wraps dual_net.model_inference_fn in a loop & RPC ops.
 
     The loop runs forever: the top of the loop issues a GetFeatures RPC to
@@ -105,7 +111,7 @@ def wrapped_model_inference_fn(config):
         # TensorFlow will reject a loop unless its condition contains at least
         # one comparison. So we use (a < 1), initialize a to 0, and never
         # increment it.
-        return tf.less(a, 1)
+        return tf.less(a[0], 1)
 
     def loop_body(a, unused_b):
         """Loop body for the tf.while_loop op.
@@ -140,13 +146,13 @@ def wrapped_model_inference_fn(config):
             name="decode_raw_features")
 
         # Reshape flat features.
-        features = tf.reshape(
+        _features = tf.reshape(
             flat_features, [-1, go.N, go.N, features_lib.NEW_FEATURES_PLANES],
             name="unflatten_features")
 
         # Run inference.
         policy_output, value_output, _ = dual_net.model_inference_fn(
-            features, False)
+            _features, False)
 
 
 
@@ -173,16 +179,16 @@ def wrapped_model_inference_fn(config):
             timeout_in_ms=0,
             name="put_outputs")
 
-        return a, response[0]
+        return a, response
 
-    loop_vars = [tf.Variable(0,name="loop_placeholder"), ""]
+    loop_vars = [features, tf.constant("", shape=(1,))]
     loop = tf.while_loop(loop_condition, loop_body, loop_vars,
                          name="inference_worker_loop")
 
     if flags.FLAGS.use_tpu:
         return tpu_estimator.TPUEstimatorSpec(
                 mode=tf.estimator.ModeKeys.PREDICT,
-                predictions={'loop': loop})
+                predictions={'loop': loop[1]})
     else:
         return loop
 
@@ -210,21 +216,22 @@ def main():
 
         config = tpu_config.RunConfig(
             cluster=tpu_cluster_resolver,
-            model_dir=working_dir,
+            model_dir="gs://jacksona-sandbox/models/k128-50c",
             save_checkpoints_steps=max(600, FLAGS.iterations_per_loop),
             tpu_config=tpu_config.TPUConfig(
                 iterations_per_loop=FLAGS.iterations_per_loop,
-                num_shards=FLAGS.num_tpu_cores,
-                per_host_input_for_training=tpu_config.InputPipelineConfig.PER_HOST_V2))  # pylint: disable=line-too-long
+                num_shards=None))
+                #per_host_input_for_training=tpu_config.InputPipelineConfig.PER_HOST_V2))  # pylint: disable=line-too-long
 
         estimator = tpu_estimator.TPUEstimator(
             use_tpu=FLAGS.use_tpu,
-            model_fn=functools.partial(wrapped_model_inference_fn(worker_config=worker_config)),
+            model_fn=functools.partial(wrapped_model_inference_fn, worker_config),
             config=config,
+            train_batch_size=1,
             predict_batch_size=8)
 
-        def input_fn_tpu():
-                return tf.data.Dataset.from_tensor_slices([tf.constant(0)])
+        def input_fn_tpu(params):
+                return tf.data.Dataset.from_tensors([tf.constant(0)])
 
         for item in estimator.predict(input_fn=input_fn_tpu):
             print('yay')
