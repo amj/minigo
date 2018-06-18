@@ -143,7 +143,7 @@ def wrapped_model_inference_fn(config, features, params):
             field_names=['batch_id', 'features'],
             output_types=[dtypes.int32, dtypes.float32],
             descriptor_source=config.descriptor_path,
-            name="decode_raw_features")
+            name="decode_get_features_response")
 
         # Reshape flat features.
         _features = tf.reshape(
@@ -170,7 +170,7 @@ def wrapped_model_inference_fn(config, features, params):
             name="encode_outputs")
 
         # Send outputs.
-        response = tf.contrib.rpc.rpc(
+        raw_response = tf.contrib.rpc.rpc(
             address=config.address,
             method=config.put_outputs_method,
             request=request_tensors,
@@ -179,10 +179,19 @@ def wrapped_model_inference_fn(config, features, params):
             timeout_in_ms=0,
             name="put_outputs")
 
-        return a, response
+        # Decode features from a proto to a flat tensor.
+        _, batch_id = decode_proto_op.decode_proto(
+            bytes=raw_response,
+            message_type='minigo.PutOutputsResponse',
+            field_names=['batch_id'],
+            output_types=[dtypes.int32],
+            descriptor_source=config.descriptor_path,
+            name="decode_put_outputs_response")
 
-    loop_vars = [features, tf.constant("", shape=(1,))]
-    loop = tf.while_loop(loop_condition, loop_body, loop_vars,
+        return a, tf.reshape(batch_id, (1,))
+
+    loop_vars = [features, tf.constant(0, shape=(1,), dtype=dtypes.int32)]
+    loop = tf.while_loop(loop_condition, loop_body, loop_vars=loop_vars,
                          name="inference_worker_loop")
 
     if flags.FLAGS.use_tpu:

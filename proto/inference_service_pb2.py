@@ -19,7 +19,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='proto/inference_service.proto',
   package='minigo',
   syntax='proto3',
-  serialized_pb=_b('\n\x1dproto/inference_service.proto\x12\x06minigo\"\x12\n\x10GetConfigRequest\";\n\x11GetConfigResponse\x12\x12\n\nboard_size\x18\x01 \x01(\x05\x12\x12\n\nbatch_size\x18\x02 \x01(\x05\"\x14\n\x12GetFeaturesRequest\"9\n\x13GetFeaturesResponse\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x10\n\x08\x66\x65\x61tures\x18\x02 \x03(\x02\"D\n\x11PutOutputsRequest\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x0e\n\x06policy\x18\x02 \x03(\x02\x12\r\n\x05value\x18\x03 \x03(\x02\"\x14\n\x12PutOutputsResponse2\xe7\x01\n\x10InferenceService\x12\x42\n\tGetConfig\x12\x18.minigo.GetConfigRequest\x1a\x19.minigo.GetConfigResponse\"\x00\x12H\n\x0bGetFeatures\x12\x1a.minigo.GetFeaturesRequest\x1a\x1b.minigo.GetFeaturesResponse\"\x00\x12\x45\n\nPutOutputs\x12\x19.minigo.PutOutputsRequest\x1a\x1a.minigo.PutOutputsResponse\"\x00\x62\x06proto3')
+  serialized_pb=_b('\n\x1dproto/inference_service.proto\x12\x06minigo\"\x12\n\x10GetConfigRequest\";\n\x11GetConfigResponse\x12\x12\n\nboard_size\x18\x01 \x01(\x05\x12\x12\n\nbatch_size\x18\x02 \x01(\x05\"\x14\n\x12GetFeaturesRequest\"9\n\x13GetFeaturesResponse\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x10\n\x08\x66\x65\x61tures\x18\x02 \x03(\x02\"D\n\x11PutOutputsRequest\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x0e\n\x06policy\x18\x02 \x03(\x02\x12\r\n\x05value\x18\x03 \x03(\x02\"&\n\x12PutOutputsResponse\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x32\xe7\x01\n\x10InferenceService\x12\x42\n\tGetConfig\x12\x18.minigo.GetConfigRequest\x1a\x19.minigo.GetConfigResponse\"\x00\x12H\n\x0bGetFeatures\x12\x1a.minigo.GetFeaturesRequest\x1a\x1b.minigo.GetFeaturesResponse\"\x00\x12\x45\n\nPutOutputs\x12\x19.minigo.PutOutputsRequest\x1a\x1a.minigo.PutOutputsResponse\"\x00\x62\x06proto3')
 )
 
 
@@ -201,6 +201,13 @@ _PUTOUTPUTSRESPONSE = _descriptor.Descriptor(
   file=DESCRIPTOR,
   containing_type=None,
   fields=[
+    _descriptor.FieldDescriptor(
+      name='batch_id', full_name='minigo.PutOutputsResponse.batch_id', index=0,
+      number=1, type=5, cpp_type=1, label=1,
+      has_default_value=False, default_value=0,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None, file=DESCRIPTOR),
   ],
   extensions=[
   ],
@@ -214,7 +221,7 @@ _PUTOUTPUTSRESPONSE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=273,
-  serialized_end=293,
+  serialized_end=311,
 )
 
 DESCRIPTOR.message_types_by_name['GetConfigRequest'] = _GETCONFIGREQUEST
@@ -275,8 +282,8 @@ _INFERENCESERVICE = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   options=None,
-  serialized_start=296,
-  serialized_end=527,
+  serialized_start=314,
+  serialized_end=545,
   methods=[
   _descriptor.MethodDescriptor(
     name='GetConfig',

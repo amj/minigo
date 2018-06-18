@@ -158,6 +158,8 @@ class ServiceImpl final : public InferenceService::Service {
       inference.counter->DecrementCount();
     }
 
+    response->set_batch_id(request->batch_id());
+
     return Status::OK;
   }
 

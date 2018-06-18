@@ -64,4 +64,5 @@ message PutOutputsRequest {
 }
 
 message PutOutputsResponse {
+  int32 batch_id =  1;
 }
