@@ -33,6 +33,7 @@ from tensorflow.python.training.summary_io import SummaryWriterCache
 from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
+from tensorflow.contrib.training.python.training import evaluation
 
 import features as features_lib
 import go
@@ -361,6 +362,30 @@ def get_estimator(working_dir):
         model_dir=working_dir,
         config=run_config)
 
+def get_tpu_estimator():
+    tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+        FLAGS.tpu_name, zone=None, project=None)
+    tpu_grpc_url = tpu_cluster_resolver.get_master()
+
+    config = tpu_config.RunConfig(
+        master=tpu_grpc_url,
+        evaluation_master=tpu_grpc_url,
+        model_dir=FLAGS.model_dir,
+        save_checkpoints_steps=max(800, FLAGS.iterations_per_loop),
+        session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True),
+        tpu_config=tpu_config.TPUConfig(
+            iterations_per_loop=FLAGS.iterations_per_loop,
+            num_shards=FLAGS.num_tpu_cores,
+            per_host_input_for_training=tpu_config.InputPipelineConfig.PER_HOST_V2))  # pylint: disable=line-too-long
+
+    estimator = tpu_estimator.TPUEstimator(
+        use_tpu=FLAGS.use_tpu,
+        model_fn=model_fn,
+        config=config,
+        train_batch_size=FLAGS.train_batch_size * FLAGS.num_tpu_cores,
+        eval_batch_size=FLAGS.train_batch_size * FLAGS.num_tpu_cores)
+    return estimator
+
 
 def bootstrap(working_dir):
     """Initialize a tf.Estimator run with random initial weights.
@@ -408,28 +433,7 @@ def export_model(working_dir, model_path):
 def train(*tf_records, steps=None):
     tf.logging.set_verbosity(tf.logging.INFO)
     if FLAGS.use_tpu:
-        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
-            FLAGS.tpu_name, zone=None, project=None)
-        tpu_grpc_url = tpu_cluster_resolver.get_master()
-
-        config = tpu_config.RunConfig(
-            master=tpu_grpc_url,
-            evaluation_master=tpu_grpc_url,
-            model_dir=FLAGS.model_dir,
-            save_checkpoints_steps=max(800, FLAGS.iterations_per_loop),
-            session_config=tf.ConfigProto(allow_soft_placement=True, log_device_placement=True),
-            tpu_config=tpu_config.TPUConfig(
-                iterations_per_loop=FLAGS.iterations_per_loop,
-                num_shards=FLAGS.num_tpu_cores,
-                per_host_input_for_training=tpu_config.InputPipelineConfig.PER_HOST_V2))  # pylint: disable=line-too-long
-
-        estimator = tpu_estimator.TPUEstimator(
-            use_tpu=FLAGS.use_tpu,
-            model_fn=model_fn,
-            config=config,
-            train_batch_size=FLAGS.train_batch_size * FLAGS.num_tpu_cores,
-            eval_batch_size=FLAGS.train_batch_size * FLAGS.num_tpu_cores)
-
+        estimator = get_tpu_estimator()
         def input_fn(params):
             return preprocessing.get_tpu_input_tensors(params['batch_size'], tf_records)
         # TODO: get hooks working again with TPUestimator.
@@ -452,16 +456,30 @@ def train(*tf_records, steps=None):
 
 
 def validate(tf_records, checkpoint_name=None, validate_name=None):
-    estimator = get_estimator(FLAGS.model_dir)
-    validate_name = validate_name or "selfplay"
-    checkpoint_name = checkpoint_name or estimator.latest_checkpoint()
 
-    def input_fn():
-        return preprocessing.get_input_tensors(
-            FLAGS.train_batch_size, tf_records, filter_amount=0.05,
-            shuffle_buffer_size=20000)
+    if FLAGS.use_tpu:
+        estimator = get_tpu_estimator()
 
-    estimator.evaluate(input_fn, steps=500, name=validate_name)
+        def input_fn(params):
+            return preprocessing.get_tpu_input_tensors(params['batch_size'], tf_records)
+
+        for ckpt in evaluation.checkpoints_iterator(FLAGS.model_dir):
+            tf.logging.info("starting evaluation for %s " % ckpt)
+
+            eval_results = estimator.evaluate(input_fn=tpu_input_fn, steps=2048*8, checkpoint_path=ckpt)
+            for k,v in eval_results.items():
+                print('{}, {:0.4f}'.format(k, v))
+    else:
+        estimator = get_estimator(FLAGS.model_dir)
+        validate_name = validate_name or "selfplay"
+        checkpoint_name = checkpoint_name or estimator.latest_checkpoint()
+
+        def input_fn():
+            return preprocessing.get_input_tensors(
+                FLAGS.train_batch_size, tf_records, filter_amount=0.05,
+                shuffle_buffer_size=20000)
+
+        estimator.evaluate(input_fn, steps=500, name=validate_name)
 
 
 def compute_update_ratio(weight_tensors, before_weights, after_weights):
