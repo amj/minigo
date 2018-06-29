@@ -78,8 +78,10 @@ MctsPlayer::MctsPlayer(std::unique_ptr<DualNet> network, const Options& options)
   temperature_cutoff_ = kN * kN / 12;
   root_ = &game_root_;
 
-  std::cerr << "MctsPlayer options: " << options_ << "\n";
-  std::cerr << "Random seed used: " << rnd_.seed() << "\n";
+  if (options_.verbose) {
+    std::cerr << "MctsPlayer options: " << options_ << "\n";
+    std::cerr << "Random seed used: " << rnd_.seed() << "\n";
+  }
 
   InitializeGame({&bv_, &gv_, Color::kBlack});
 }
@@ -133,8 +135,10 @@ Coord MctsPlayer::SuggestMove() {
   int num_readouts = root_->N() - current_readouts;
   auto elapsed = absl::Now() - start;
   elapsed = elapsed * 100 / num_readouts;
-  std::cerr << "Milliseconds per 100 reads: "
-            << absl::ToInt64Milliseconds(elapsed) << "ms" << std::endl;
+  if (options_.verbose) {
+    std::cerr << "Milliseconds per 100 reads: "
+              << absl::ToInt64Milliseconds(elapsed) << "ms" << std::endl;
+  }
 
   if (ShouldResign()) {
     return Coord::kResign;
@@ -147,7 +151,9 @@ Coord MctsPlayer::PickMove() {
   if (!options_.soft_pick || root_->position.n() >= temperature_cutoff_) {
     // Choose the most visited node.
     Coord c = ArgMax(root_->edges, MctsNode::CmpN);
-    std::cerr << "Picked arg_max " << c << "\n";
+    if (options_.verbose) {
+      std::cerr << "Picked arg_max " << c << "\n";
+    }
     return c;
   }
 
@@ -165,7 +171,9 @@ Coord MctsPlayer::PickMove() {
   }
   float e = rnd_();
   Coord c = SearchSorted(cdf, e);
-  std::cerr << "Picked rnd(" << e << ") " << c << "\n";
+  if (options_.verbose) {
+    std::cerr << "Picked rnd(" << e << ") " << c << "\n";
+  }
   MG_DCHECK(root_->child_N(c) != 0);
   return c;
 }
@@ -233,9 +241,11 @@ void MctsPlayer::PlayMove(Coord c) {
   // never revisit them.
   root_->parent->PruneChildren(c);
 
-  std::cerr << name() << " Q: " << std::setw(8) << std::setprecision(5)
-            << root_->Q() << "\n";
-  std::cerr << "Played >>" << c << std::endl;
+  if (options_.verbose) {
+    std::cerr << name() << " Q: " << std::setw(8) << std::setprecision(5)
+              << root_->Q() << "\n";
+    std::cerr << "Played >>" << c << std::endl;
+  }
 
   // Handle consecutive passing.
   if (root_->position.is_game_over() ||
