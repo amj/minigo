@@ -25,6 +25,7 @@ py-image:
 	rm -rfd staging
 
 cc-image:
+	$(staging)
 	docker build -f Dockerfile-cc -t "gcr.io/$(PROJECT)/$(CC_PLAYER_CONTAINER):$(VERSION_TAG)" .
 
 cc-push: cc-image
