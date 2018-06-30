@@ -80,11 +80,6 @@ flags.DEFINE_string(
     'when creating the Cloud TPU, or a grpc://ip.address.of.tpu:8470 url.')
 
 flags.register_multi_flags_validator(
-    ['use_tpu', 'tpu_name'],
-    lambda flags: bool(flags['use_tpu']) == bool(flags['tpu_name']),
-    'If use_tpu is set, tpu_name must also be set.')
-
-flags.register_multi_flags_validator(
     ['lr_boundaries', 'lr_rates'],
     lambda flags: len(flags['lr_boundaries']) == len(flags['lr_rates']) - 1,
     'Number of learning rates must be exactly one greater than the number of boundaries')
@@ -419,8 +414,11 @@ def export_model(working_dir, model_path):
 def train(*tf_records, steps=None):
     tf.logging.set_verbosity(tf.logging.INFO)
     if FLAGS.use_tpu:
-        tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
-            FLAGS.tpu_name, zone=None, project=None)
+        if FLAGS.tpu_name:
+            tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver(
+                FLAGS.tpu_name, zone=None, project=None)
+        else:
+            tpu_cluster_resolver = tf.contrib.cluster_resolver.TPUClusterResolver()
         tpu_grpc_url = tpu_cluster_resolver.get_master()
 
         config = tpu_config.RunConfig(
