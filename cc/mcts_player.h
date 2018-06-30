@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "cc/algorithm.h"
 #include "cc/constants.h"
@@ -68,6 +69,9 @@ class MctsPlayer {
     // If time_limit is non-zero, the decay factor used to shorten the amount
     // of time spent thinking as the game progresses.
     float decay_factor = 0.98;
+
+    // If true, print debug info to stderr.
+    bool verbose = true;
 
     friend std::ostream& operator<<(std::ostream& ios, const Options& options);
   };
