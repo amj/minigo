@@ -136,7 +136,7 @@ class PlayerFactory {
         "BOARD_SIZE=19",
         "python",
         "inference_worker.py",
-        "--model=gs://jacksona-sandbox/models/k256-50c/model.ckpt-48800",
+        "--model=gs://tensor-go-minigo-v7-19/models/000485-onslaught.pb",
         "--use_tpu=true",
         "--tpu_name=grpc://10.240.2.2:8470",
         "--conv_width=256",
