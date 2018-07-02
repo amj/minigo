@@ -2,17 +2,21 @@
 #  make target VERSION_TAG=0.XY PROJECT=foo-project
 
 define staging =
-mkdir -p staging
-cp ../../*.py staging/
-cp ../../requirements.txt staging/
-cp player_wrapper.sh staging/
-cp tpu_wrapper.sh staging/
+	mkdir -p staging
+	cp ../../WORKSPACE staging/
+	cp -r -p ../../cc/ staging/
+	cp -r -p ../../proto/ staging/
+	rm -rfd staging/cc/tensorflow
+	cp ../../*.py staging/
+	cp ../../requirements.txt staging/
+	cp player_wrapper.sh staging/
+	cp tpu_wrapper.sh staging/
 endef
 
 tpu-image:
 	$(staging)
 	docker build -f Dockerfile.tpu -t "gcr.io/$(PROJECT)/minigo-tpu-player:0.1" .
-	rm -rfd staging
+#	rm -rfd staging
 
 gpu-image:
 	$(staging)
