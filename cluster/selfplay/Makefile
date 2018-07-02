@@ -1,5 +1,13 @@
-# Version and project can be overridden with the following:
-#  make target VERSION_TAG=0.XY PROJECT=foo-project
+# See existing images with
+#     gcloud container images list
+#     gcloud container images list-tags gcr.io/$PROJECT/<PLAYER_CONTAINER>
+#
+# Usage:
+# Set environment variables as follows:
+#   - CPU_PLAYER_CONTAINER/GPU_PLAYER_CONTAINER: name of the cpu/gpu player container (e.g. minigo-gpu-player)
+#   - VERSION_TAG: as in the other cluster/ dockerfiles.
+#
+#  	  VERSION_TAG=0.XY make target
 
 define staging =
 	mkdir -p staging
