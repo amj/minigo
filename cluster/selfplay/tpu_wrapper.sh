@@ -23,9 +23,9 @@ bazel-bin/cc/main \
   --inject_noise=true \
   --soft_pick=true \
   --random_symmetry=true \
-  --remote_batch_size=128 \
-  --parallel_games=32 \
-  --batch_size=8 \
+  --virtual_losses=8 \
+  --games_per_inference=8 \
+  --parallel_games=8 \
   --num_readouts=800 \
   --resign_threshold=-0.95 \
   --output_dir=gs://tmadams-sandbox/data/selfplay \
