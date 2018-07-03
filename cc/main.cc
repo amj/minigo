@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <unistd.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -110,8 +110,9 @@ DEFINE_int32(port, 50051,
              "If model=remote, the port opened by the InferenceService "
              "server.");
 DEFINE_int32(parallel_games, 32, "Number of games to play in parallel.");
-DEFINE_int32(games_per_inference, 16,
-             "Number of games to merge together into a single inference batch.");
+DEFINE_int32(
+    games_per_inference, 16,
+    "Number of games to merge together into a single inference batch.");
 DEFINE_int32(parallel_tpus, 8,
              "If model=remote, the number of TPU cores to run on in parallel.");
 
@@ -140,18 +141,17 @@ namespace {
 class PlayerFactory {
  public:
   PlayerFactory(const MctsPlayer::Options& options, float disable_resign_pct)
-      : options_(options),
-        disable_resign_pct_(disable_resign_pct) {
+      : options_(options), disable_resign_pct_(disable_resign_pct) {
     inference_worker_thread_ = std::thread([]() {
       std::vector<std::string> cmd_parts = {
-        absl::StrCat("BOARD_SIZE=", kN),
-        "python",
-        "inference_worker.py",
-        "--model=gs://tensor-go-minigo-v7-19/models/000485-onslaught.pb",
-        "--use_tpu=true",
-        "--tpu_name=grpc://10.240.2.2:8470",
-        "--conv_width=256",
-        absl::StrCat("--parallel_tpus=", FLAGS_parallel_tpus),
+          absl::StrCat("BOARD_SIZE=", kN),
+          "python",
+          "inference_worker.py",
+          "--model=",
+          FLAGS_model,
+          "--use_tpu=true",
+          "--conv_width=256",
+          absl::StrCat("--parallel_tpus=", FLAGS_parallel_tpus),
       };
       auto cmd = absl::StrJoin(cmd_parts, " ");
       FILE* f = popen(cmd.c_str(), "r");
@@ -166,11 +166,10 @@ class PlayerFactory {
     });
   }
 
-  virtual ~PlayerFactory() {
-    inference_worker_thread_.join();
-  }
+  virtual ~PlayerFactory() { inference_worker_thread_.join(); }
 
-  virtual std::unique_ptr<MctsPlayer> New(const MctsPlayer::Options& options) = 0;
+  virtual std::unique_ptr<MctsPlayer> New(
+      const MctsPlayer::Options& options) = 0;
 
   float rnd() {
     absl::MutexLock lock(&mutex_);
@@ -197,15 +196,15 @@ class PlayerFactory {
 class RemotePlayerFactory : public PlayerFactory {
  public:
   RemotePlayerFactory(const MctsPlayer::Options& options,
-                      float disable_resign_pct,
-                      int virtual_losses, int games_per_inference, int port)
+                      float disable_resign_pct, int virtual_losses,
+                      int games_per_inference, int port)
       : PlayerFactory(options, disable_resign_pct) {
-    server_ = absl::make_unique<InferenceServer>(
-        virtual_losses, games_per_inference, port);
+    server_ = absl::make_unique<InferenceServer>(virtual_losses,
+                                                 games_per_inference, port);
   }
 
   std::unique_ptr<MctsPlayer> New(const MctsPlayer::Options& options) override {
-      std::cerr << "### " << options.random_seed << std::endl;
+    std::cerr << "### " << options.random_seed << std::endl;
     return absl::make_unique<MctsPlayer>(server_->NewDualNet(), options);
   }
 
@@ -427,9 +426,9 @@ void Eval() {
   }
   std::cerr << "Black was: " << player->name() << "\n";
 
-  std::string output_name = absl::StrCat(
-      GetOutputName(absl::Now(), 0), "-", player->name(), "-",
-      other_player->name());
+  std::string output_name =
+      absl::StrCat(GetOutputName(absl::Now(), 0), "-", player->name(), "-",
+                   other_player->name());
 
   // Write SGF.
   if (!FLAGS_sgf_dir.empty()) {
