@@ -114,8 +114,11 @@ def main():
     tpu_init = tf.contrib.tpu.initialize_system()
     tpu_shutdown = tf.contrib.tpu.shutdown_system()
 
-    tpu_grpc_url = tf.contrib.cluster_resolver.TPUClusterResolver(
-        tpu=[FLAGS.tpu_name]).get_master()
+    if FLAGS.tpu_name:
+        tpu_grpc_url = tf.contrib.cluster_resolver.TPUClusterResolver(
+            tpu=[FLAGS.tpu_name]).get_master()
+    else:
+        tpu_grpc_url = tf.contrib.cluster_resolver.TPUClusterResolver().get_master()
 
     sess = tf.Session(tpu_grpc_url)
     features_list = []
