@@ -1,4 +1,4 @@
-FROM gcr.io/tensor-go/cc-base:0.18
+FROM gcr.io/tensor-go/cc-base:0.20
 
 RUN apt update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -29,7 +29,7 @@ ADD staging/requirements.txt /app/requirements.txt
 
 RUN pip3 install --upgrade pip
 RUN pip3 install -r /app/requirements.txt
-RUN pip3 install "tensorflow==1.8"
+RUN pip3 install "tensorflow==1.9.0rc2"
 
 ADD staging/ /app
 WORKDIR /app

@@ -20,6 +20,7 @@ set -e
 
 bazel-bin/cc/main \
   --model=remote \
+  --model_two=gs://tensor-go-minigo-v7-19/models/000485-onslaught \
   --inject_noise=true \
   --soft_pick=true \
   --random_symmetry=true \
