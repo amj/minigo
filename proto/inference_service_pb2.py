@@ -19,7 +19,11 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='proto/inference_service.proto',
   package='minigo',
   syntax='proto3',
+<<<<<<< HEAD
   serialized_pb=_b('\n\x1dproto/inference_service.proto\x12\x06minigo\"\x12\n\x10GetConfigRequest\"\\\n\x11GetConfigResponse\x12\x12\n\nboard_size\x18\x01 \x01(\x05\x12\x16\n\x0evirtual_losses\x18\x02 \x01(\x05\x12\x1b\n\x13games_per_inference\x18\x03 \x01(\x05\"\x14\n\x12GetFeaturesRequest\"P\n\x13GetFeaturesResponse\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x10\n\x08\x66\x65\x61tures\x18\x02 \x03(\x02\x12\x15\n\rbyte_features\x18\x03 \x01(\x0c\"D\n\x11PutOutputsRequest\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x0e\n\x06policy\x18\x02 \x03(\x02\x12\r\n\x05value\x18\x03 \x03(\x02\"\x14\n\x12PutOutputsResponse2\xe7\x01\n\x10InferenceService\x12\x42\n\tGetConfig\x12\x18.minigo.GetConfigRequest\x1a\x19.minigo.GetConfigResponse\"\x00\x12H\n\x0bGetFeatures\x12\x1a.minigo.GetFeaturesRequest\x1a\x1b.minigo.GetFeaturesResponse\"\x00\x12\x45\n\nPutOutputs\x12\x19.minigo.PutOutputsRequest\x1a\x1a.minigo.PutOutputsResponse\"\x00\x62\x06proto3')
+=======
+  serialized_pb=_b('\n\x1dproto/inference_service.proto\x12\x06minigo\"\x12\n\x10GetConfigRequest\"\\\n\x11GetConfigResponse\x12\x12\n\nboard_size\x18\x01 \x01(\x05\x12\x16\n\x0evirtual_losses\x18\x02 \x01(\x05\x12\x1b\n\x13games_per_inference\x18\x03 \x01(\x05\"\x14\n\x12GetFeaturesRequest\"9\n\x13GetFeaturesResponse\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x10\n\x08\x66\x65\x61tures\x18\x02 \x01(\x0c\"D\n\x11PutOutputsRequest\x12\x10\n\x08\x62\x61tch_id\x18\x01 \x01(\x05\x12\x0e\n\x06policy\x18\x02 \x03(\x02\x12\r\n\x05value\x18\x03 \x03(\x02\"\x14\n\x12PutOutputsResponse2\xe7\x01\n\x10InferenceService\x12\x42\n\tGetConfig\x12\x18.minigo.GetConfigRequest\x1a\x19.minigo.GetConfigResponse\"\x00\x12H\n\x0bGetFeatures\x12\x1a.minigo.GetFeaturesRequest\x1a\x1b.minigo.GetFeaturesResponse\"\x00\x12\x45\n\nPutOutputs\x12\x19.minigo.PutOutputsRequest\x1a\x1a.minigo.PutOutputsResponse\"\x00\x62\x06proto3')
+>>>>>>> tom/cloud_tpu
 )
 
 
@@ -134,8 +138,8 @@ _GETFEATURESRESPONSE = _descriptor.Descriptor(
       options=None, file=DESCRIPTOR),
     _descriptor.FieldDescriptor(
       name='features', full_name='minigo.GetFeaturesResponse.features', index=1,
-      number=2, type=2, cpp_type=6, label=3,
-      has_default_value=False, default_value=[],
+      number=2, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=_b(""),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None, file=DESCRIPTOR),
@@ -159,7 +163,11 @@ _GETFEATURESRESPONSE = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=177,
+<<<<<<< HEAD
   serialized_end=257,
+=======
+  serialized_end=234,
+>>>>>>> tom/cloud_tpu
 )
 
 
@@ -203,8 +211,13 @@ _PUTOUTPUTSREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
+<<<<<<< HEAD
   serialized_start=259,
   serialized_end=327,
+=======
+  serialized_start=236,
+  serialized_end=304,
+>>>>>>> tom/cloud_tpu
 )
 
 
@@ -227,8 +240,13 @@ _PUTOUTPUTSRESPONSE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
+<<<<<<< HEAD
   serialized_start=329,
   serialized_end=349,
+=======
+  serialized_start=306,
+  serialized_end=326,
+>>>>>>> tom/cloud_tpu
 )
 
 DESCRIPTOR.message_types_by_name['GetConfigRequest'] = _GETCONFIGREQUEST
@@ -289,8 +307,13 @@ _INFERENCESERVICE = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   options=None,
+<<<<<<< HEAD
   serialized_start=352,
   serialized_end=583,
+=======
+  serialized_start=329,
+  serialized_end=560,
+>>>>>>> tom/cloud_tpu
   methods=[
   _descriptor.MethodDescriptor(
     name='GetConfig',

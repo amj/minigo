@@ -53,6 +53,8 @@ flags.DEFINE_integer("parallel_tpus", 8,
 FLAGS = flags.FLAGS
 
 
+# The default maximum receive RPC size is only 4MB, which isn't large enough
+# for our messages.
 GRPC_OPTIONS = [
     ("grpc.max_message_length", 50 *  1024 * 1024),
     ("grpc.max_receive_message_length", 50 *  1024 * 1024),
@@ -83,7 +85,6 @@ def const_model_inference_fn(features):
     with tf.variable_scope("", custom_getter=custom_getter):
         return dual_net.model_inference_fn(features, False)
 
-
 def main():
     """Runs the inference worker."""
 
@@ -94,7 +95,6 @@ def main():
     if config.board_size != go.N:
         raise RuntimeError("Board size mismatch: server=%d, worker=%d" % (
             config.board_size, go.N))
-
     positions_per_inference = config.games_per_inference * config.virtual_losses
     if positions_per_inference % FLAGS.parallel_tpus != 0:
         raise RuntimeError(
@@ -152,7 +152,7 @@ def main():
         while True:
             features_response = stub.GetFeatures(
                 inference_service_pb2.GetFeaturesRequest())
-            all_features = features_response.byte_features
+            all_features = features_response.features
 
             features = []
             num_features = batch_size * num_board_features
@@ -166,14 +166,15 @@ def main():
                 features.append(x)
 
             outputs = sess.run(replicate_outputs, {tuple(features_list): features})
-
-            flattened_policy_outputs = [x[0].reshape(-1) for x in outputs]
-            flattened_value_outputs = [x[1].reshape(-1) for x in outputs]
+            flat_policy = []
+            value = []
+            for x in outputs:
+                flat_policy.extend(x[0])
+                value.extend(x[1])
 
             put_outputs_request = inference_service_pb2.PutOutputsRequest(
                  batch_id=features_response.batch_id,
-                 policy=np.concatenate(flattened_policy_outputs),
-                 value=np.concatenate(flattened_value_outputs))
+                 policy=np.concatenate(flat_policy), value=value)
 
             stub.PutOutputs(put_outputs_request)
 

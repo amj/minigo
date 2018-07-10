@@ -35,6 +35,7 @@ GtpPlayer::GtpPlayer(std::unique_ptr<DualNet> network, const Options& options)
     : MctsPlayer(std::move(network), options),
       ponder_limit_(options.ponder_limit),
       courtesy_pass_(options.courtesy_pass) {
+  RegisterCmd("benchmark", &GtpPlayer::HandleBenchmark);
   RegisterCmd("boardsize", &GtpPlayer::HandleBoardsize);
   RegisterCmd("clear_board", &GtpPlayer::HandleClearBoard);
   RegisterCmd("echo", &GtpPlayer::HandleEcho);
@@ -151,7 +152,7 @@ absl::Span<MctsNode* const> GtpPlayer::TreeSearch(int batch_size) {
 
 GtpPlayer::Response GtpPlayer::CheckArgsExact(
     absl::string_view cmd, size_t expected_num_args,
-    const std::vector<absl::string_view>& args) {
+    CmdArgs args) {
   if (args.size() != expected_num_args) {
     return Response::Error("expected ", expected_num_args,
                            " args for GTP command ", cmd, ", got ", args.size(),
@@ -162,7 +163,7 @@ GtpPlayer::Response GtpPlayer::CheckArgsExact(
 
 GtpPlayer::Response GtpPlayer::CheckArgsRange(
     absl::string_view cmd, size_t expected_min_args, size_t expected_max_args,
-    const std::vector<absl::string_view>& args) {
+    CmdArgs args) {
   if (args.size() < expected_min_args || args.size() > expected_max_args) {
     return Response::Error("expected between ", expected_min_args, " and ",
                            expected_max_args, " args for GTP command ", cmd,
@@ -173,7 +174,7 @@ GtpPlayer::Response GtpPlayer::CheckArgsRange(
 }
 
 GtpPlayer::Response GtpPlayer::DispatchCmd(
-    const std::string& cmd, const std::vector<absl::string_view>& args) {
+    const std::string& cmd, CmdArgs args) {
   auto it = cmd_handlers_.find(cmd);
   if (it == cmd_handlers_.end()) {
     return Response::Error("unknown command");
@@ -182,8 +183,43 @@ GtpPlayer::Response GtpPlayer::DispatchCmd(
   return (this->*handler)(cmd, args);
 }
 
+GtpPlayer::Response GtpPlayer::HandleBenchmark(
+    absl::string_view cmd, CmdArgs args) {
+  // benchmark [readouts] [batch_size]
+  // Note: By default use current time_control (readouts or time).
+  auto response = CheckArgsRange(cmd, 0, 2, args);
+  if (!response.ok) {
+    return response;
+  }
+
+  auto saved_options = options();
+  MctsPlayer::Options temp_options = options();
+
+  if (args.size() > 0) {
+    temp_options.seconds_per_move = 0;
+    if (!absl::SimpleAtoi(args[0], &temp_options.num_readouts)) {
+      return Response::Error("bad num_readouts");
+    }
+  }
+
+  if (args.size() == 2) {
+    if (!absl::SimpleAtoi(args[1], &temp_options.batch_size)) {
+      return Response::Error("bad batch_size");
+    }
+  }
+
+  // Set options.
+  *mutable_options() = temp_options;
+  // Run benchmark.
+  MctsPlayer::SuggestMove();
+  // Reset options.
+  *mutable_options() = saved_options;
+
+  return Response::Ok();
+}
+
 GtpPlayer::Response GtpPlayer::HandleBoardsize(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;
@@ -198,7 +234,7 @@ GtpPlayer::Response GtpPlayer::HandleBoardsize(
 }
 
 GtpPlayer::Response GtpPlayer::HandleClearBoard(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 0, args);
   if (!response.ok) {
     return response;
@@ -211,12 +247,12 @@ GtpPlayer::Response GtpPlayer::HandleClearBoard(
 }
 
 GtpPlayer::Response GtpPlayer::HandleEcho(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   return Response::Ok(absl::StrJoin(args, " "));
 }
 
 GtpPlayer::Response GtpPlayer::HandleFinalScore(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 0, args);
   if (!response.ok) {
     return response;
@@ -233,7 +269,7 @@ GtpPlayer::Response GtpPlayer::HandleFinalScore(
 }
 
 GtpPlayer::Response GtpPlayer::HandleGamestate(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 0, args);
   if (!response.ok) {
     return response;
@@ -286,7 +322,7 @@ GtpPlayer::Response GtpPlayer::HandleGamestate(
 }
 
 GtpPlayer::Response GtpPlayer::HandleGenmove(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsRange(cmd, 0, 1, args);
   if (!response.ok) {
     return response;
@@ -301,7 +337,7 @@ GtpPlayer::Response GtpPlayer::HandleGenmove(
 }
 
 GtpPlayer::Response GtpPlayer::HandleInfo(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 0, args);
   if (!response.ok) {
     return response;
@@ -314,7 +350,7 @@ GtpPlayer::Response GtpPlayer::HandleInfo(
 }
 
 GtpPlayer::Response GtpPlayer::HandleKnownCommand(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;
@@ -329,7 +365,7 @@ GtpPlayer::Response GtpPlayer::HandleKnownCommand(
 }
 
 GtpPlayer::Response GtpPlayer::HandleKomi(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;
@@ -344,7 +380,7 @@ GtpPlayer::Response GtpPlayer::HandleKomi(
 }
 
 GtpPlayer::Response GtpPlayer::HandleListCommands(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 0, args);
   if (!response.ok) {
     return response;
@@ -360,7 +396,7 @@ GtpPlayer::Response GtpPlayer::HandleListCommands(
 }
 
 GtpPlayer::Response GtpPlayer::HandleLoadsgf(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;
@@ -393,7 +429,7 @@ GtpPlayer::Response GtpPlayer::HandleLoadsgf(
 }
 
 GtpPlayer::Response GtpPlayer::HandleName(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 0, args);
   if (!response.ok) {
     return response;
@@ -402,7 +438,7 @@ GtpPlayer::Response GtpPlayer::HandleName(
 }
 
 GtpPlayer::Response GtpPlayer::HandlePlay(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 2, args);
   if (!response.ok) {
     return response;
@@ -439,7 +475,7 @@ GtpPlayer::Response GtpPlayer::HandlePlay(
 }
 
 GtpPlayer::Response GtpPlayer::HandlePonderLimit(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;
@@ -456,7 +492,7 @@ GtpPlayer::Response GtpPlayer::HandlePonderLimit(
 }
 
 GtpPlayer::Response GtpPlayer::HandleReadouts(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;
@@ -473,7 +509,7 @@ GtpPlayer::Response GtpPlayer::HandleReadouts(
 }
 
 GtpPlayer::Response GtpPlayer::HandleReportSearchInterval(
-    absl::string_view cmd, const std::vector<absl::string_view>& args) {
+    absl::string_view cmd, CmdArgs args) {
   auto response = CheckArgsExact(cmd, 1, args);
   if (!response.ok) {
     return response;

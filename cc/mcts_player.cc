@@ -138,7 +138,10 @@ Coord MctsPlayer::SuggestMove() {
   elapsed = elapsed * 100 / num_readouts;
   if (options_.verbose) {
     std::cerr << "Milliseconds per 100 reads: "
-              << absl::ToInt64Milliseconds(elapsed) << "ms" << std::endl;
+              << absl::ToInt64Milliseconds(elapsed) << "ms"
+              << " over " << num_readouts
+              << " readouts (batched: " << options_.batch_size << ")"
+              << std::endl;
   }
 
   if (ShouldResign()) {
