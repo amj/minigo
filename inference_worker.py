@@ -78,6 +78,14 @@ def get_server_config():
 
 
 def const_model_inference_fn(features):
+    """Builds the model graph with weights marked as constant.
+
+    This improves TPU inference performance because it prevents the weights
+    being transferred to the TPU every call to Session.run().
+
+    Returns:
+        (policy_output, value_output, logits) tuple of tensors.
+    """
     def custom_getter(getter, name, *args, **kwargs):
         with tf.control_dependencies(None):
             return tf.guarantee_const(
@@ -95,6 +103,7 @@ def main():
     if config.board_size != go.N:
         raise RuntimeError("Board size mismatch: server=%d, worker=%d" % (
             config.board_size, go.N))
+
     positions_per_inference = config.games_per_inference * config.virtual_losses
     if positions_per_inference % FLAGS.parallel_tpus != 0:
         raise RuntimeError(
@@ -119,7 +128,6 @@ def main():
             tpu=[FLAGS.tpu_name]).get_master()
     else:
         tpu_grpc_url = tf.contrib.cluster_resolver.TPUClusterResolver().get_master()
-
     sess = tf.Session(tpu_grpc_url)
     features_list = []
     with sess.graph.as_default():

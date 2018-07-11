@@ -39,7 +39,7 @@ namespace minigo {
 namespace internal {
 
 // Implementation of the InferenceService.
-// The client InferenceServer pushes inference requests onto
+// The client InferenceClient pushes inference requests onto
 // InferenceServiceImpl's request queue.
 class InferenceServiceImpl final : public InferenceService::Service {
  public:
@@ -67,6 +67,7 @@ class InferenceServiceImpl final : public InferenceService::Service {
       // requests off the queue in parallel, we'd likely end up with multiple
       // partially empty batches.
       absl::MutexLock lock(&get_features_mutex_);
+
       // Each client is guaranteed to never request more than
       // virtual_losses_ inferences in each RemoteInference. Additionally,
       // each client is only able to have one pending RemoteInference at a
