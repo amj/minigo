@@ -116,17 +116,13 @@ class InferenceServiceImpl final : public InferenceService::Service {
       pending_inferences_[response->batch_id()] = std::move(inferences);
     }
 
-    // std::cerr << absl::Now() << " DONE  GetFeatures\n";
-
     return Status::OK;
   }
 
   Status PutOutputs(ServerContext* context, const PutOutputsRequest* request,
                     PutOutputsResponse* response) override {
-    // std::cerr << absl::Now() << " START PutOutputs\n";
     std::vector<RemoteInference> inferences;
     {
-      // std::cerr << "### PutOutputs" << std::endl;
       absl::MutexLock lock(&pending_inferences_mutex_);
       auto it = pending_inferences_.find(request->batch_id());
       MG_CHECK(it != pending_inferences_.end());
@@ -159,8 +155,6 @@ class InferenceServiceImpl final : public InferenceService::Service {
 
       game.notification->Notify();
     }
-
-    // std::cerr << absl::Now() << " DONE  PutOutputs\n";
 
     return Status::OK;
   }
