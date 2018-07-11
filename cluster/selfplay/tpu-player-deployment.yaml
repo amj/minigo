@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: tpu-player-deployment
 spec:
-  replicas: 2 
+  replicas: 8
   selector:
     matchLabels:
       app: tpu-player
@@ -30,5 +30,5 @@ spec:
       volumes:
       - name: service-credentials
         secret:
-          secretName: minigo-services2-creds
-      restartPolicy: Always 
+          secretName: $SERVICE_ACCOUNT-creds
+      restartPolicy: Always
