@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 source ${SCRIPT_DIR}/../common.sh
@@ -30,4 +32,15 @@ command -v envsubst >/dev/null 2>&1 || {
   exit 1;
 }
 
+: ${WORK_DIR?"Need to set WORK_DIR"}
+: ${BUCKET_NAME?"Need to set BUCKET_NAME"}
+: ${SERVICE_ACCOUNT?"Need to set SERVICE_ACCOUNT"}
+
+echo "-------------------------"
+echo "  Launching TPU Cluster"
+echo "-------------------------"
+echo "Bucket:       $BUCKET_NAME"
+echo "Working dir:  $WORK_DIR"
+echo "Service acct: $SERVICE_ACCOUNT"
+echo "-------------------------"
 cat ${SCRIPT_DIR}/tpu-player-deployment.yaml | envsubst | kubectl apply -f -

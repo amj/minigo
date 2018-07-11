@@ -18,6 +18,8 @@
 
 set -e
 
+: ${BUCKET_NAME?"Bucket name must be set!"}
+
 bazel-bin/cc/main \
   --remote_inference=true \
   --model=gs://tensor-go-minigo-v7-19/models/000485-onslaught \
@@ -29,8 +31,8 @@ bazel-bin/cc/main \
   --parallel_games=32 \
   --num_readouts=800 \
   --resign_threshold=-0.95 \
-  --output_dir=gs://tmadams-sandbox/data/selfplay \
-  --holdout_dir=gs://tmadams-sandbox/data/holdout \
-  --sgf_dir=gs://tmadams-sandbox/sgf \
+  --output_dir=gs://$BUCKET_NAME/data/selfplay \
+  --holdout_dir=gs://${BUCKET_NAME}/data/holdout \
+  --sgf_dir=gs://${BUCKET_NAME}/sgf \
   --mode=selfplay \
   --run_forever=true
