@@ -19,14 +19,14 @@
 set -e
 
 bazel-bin/cc/main \
-  --model=remote \
-  --model_two=gs://tensor-go-minigo-v7-19/models/000485-onslaught \
+  --remote_inference=true \
+  --model=gs://tensor-go-minigo-v7-19/models/000485-onslaught \
   --inject_noise=true \
   --soft_pick=true \
   --random_symmetry=true \
   --virtual_losses=8 \
-  --games_per_inference=8 \
-  --parallel_games=8 \
+  --games_per_inference=16 \
+  --parallel_games=32 \
   --num_readouts=800 \
   --resign_threshold=-0.95 \
   --output_dir=gs://tmadams-sandbox/data/selfplay \
