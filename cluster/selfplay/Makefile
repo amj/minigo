@@ -41,15 +41,15 @@ cc-image:
 	docker build -f Dockerfile-cc -t "gcr.io/$(PROJECT)/$(CC_PLAYER_CONTAINER):$(VERSION_TAG)" .
 
 cc-push: cc-image
-  gcloud docker -- push "gcr.io/$(PROJECT)/$(CC_PLAYER_CONTAINER):$(VERSION_TAG)"
+	gcloud docker -- push "gcr.io/$(PROJECT)/$(CC_PLAYER_CONTAINER):$(VERSION_TAG)"
 
 py-push: py-image
-  gcloud docker -- push "gcr.io/$(PROJECT)/$(CPU_PLAYER_CONTAINER):$(VERSION_TAG)"
+	gcloud docker -- push "gcr.io/$(PROJECT)/$(CPU_PLAYER_CONTAINER):$(VERSION_TAG)"
 
 gpu-push: gpu-image
-  gcloud docker -- push "gcr.io/$(PROJECT)/$(GPU_PLAYER_CONTAINER):$(VERSION_TAG)"
+	gcloud docker -- push "gcr.io/$(PROJECT)/$(GPU_PLAYER_CONTAINER):$(VERSION_TAG)"
 
 tpu-push: tpu-image
-  gcloud docker -- push "gcr.io/$(PROJECT)/minigo-tpu-player:0.1"
+	gcloud docker -- push "gcr.io/$(PROJECT)/minigo-tpu-player:0.1"
 
 .PHONY: cc-image cpu-image tpu-image gpu-image image-push cc-push cpu-push gpu-push tpu-push
