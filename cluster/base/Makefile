@@ -10,7 +10,7 @@ base-image:
 		cp -r -p ../../cc/ staging/
 		cp -r -p ../../proto/ staging/
 		rm -rfd staging/cc/tensorflow
-	  docker build -t "gcr.io/${PROJECT}/cc-base:${VERSION_TAG}" .
+		docker build -t "gcr.io/${PROJECT}/cc-base:${VERSION_TAG}" .
 		rm -rfd staging/
 
 base-push: base-image
