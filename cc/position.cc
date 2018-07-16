@@ -73,6 +73,9 @@ void Position::PlayMove(Coord c, Color color) {
   } else {
     to_play_ = color;
   }
+  if (!IsMoveLegal(c)) {
+    std::cerr << "!! Gonna checkfail!\n";
+  }
   MG_CHECK(IsMoveLegal(c));
 
   AddStoneToBoard(c, color);
