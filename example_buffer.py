@@ -72,9 +72,11 @@ class ExampleBuffer():
         if len(games) > max_games:
             games = games[-max_games:]
 
+        samples_per_game = max(self.samples_per_game, self.max_size // len(games))
+        f = functools.partial(self.func, samples_per_game=samples_per_game)
         while len(self.examples) < self.max_size:
             with mp.Pool(threads) as pool:
-                res = tqdm(pool.imap(self.func, games), total=len(games))
+                res = tqdm(pool.imap(f, games), total=len(games))
                 self.examples.extend(itertools.chain.from_iterable(res))
             print("Got", len(self.examples))
 
