@@ -77,9 +77,9 @@ def same_run_eval(black_num=0, white_num=0):
     w_model_path = os.path.join(fsdb.models_dir(), w)
 
     launch_eval_job(b_model_path + ".pb",
-               w_model_path + ".pb",
-               "{:d}-{:d}".format(black_num, white_num),
-               bucket)
+                    w_model_path + ".pb",
+                    "{:d}-{:d}".format(black_num, white_num),
+                    bucket)
 
 
 def zoo_loop():
@@ -110,7 +110,7 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 8:
+            while len(r.items) < 10:
                 if not desired_pairs:
                     time.sleep(60*5)
                     continue
@@ -123,6 +123,7 @@ def zoo_loop():
                     raise
                 save_pairs(sorted(desired_pairs))
                 save_last_model(last_model)
+                time.sleep(3)
 
             else:
                 print("{}\t{} jobs outstanding.".format(
@@ -175,7 +176,6 @@ def cleanup(api_instance=None):
             print(job.metadata.name, "finished!")
             resp = api.delete_namespaced_job(
                 job.metadata.name, 'default', body=delete_opts)
-
 
 
 def make_pairs_for_model(model_num=0):
