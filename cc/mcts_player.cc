@@ -311,12 +311,13 @@ void MctsPlayer::PushHistory(Coord c) {
   // Convert child visit counts to a probability distribution, pi.
   // For moves before the temperature cutoff, exponentiate the probabilities by
   // a temperature slightly larger than unity to encourage diversity in early
-  // play and hopefully to move away from 3-3s.
+  // play.
   if (root_->position.n() < temperature_cutoff_) {
     // Squash counts before normalizing.
-    for (int i = 0; i < kNumMoves; ++i) {
+    for (int i = 0; i < kNumMoves - 1; ++i) {
       history.search_pi[i] = std::pow(root_->child_N(i), 0.98);
     }
+    history.search_pi[Coord::kPass] = 0;  // No pass weight
   } else {
     for (int i = 0; i < kNumMoves; ++i) {
       history.search_pi[i] = root_->child_N(i);
