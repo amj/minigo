@@ -26,7 +26,7 @@ import fsdb
 import time
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=20):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job names
@@ -99,7 +99,7 @@ def zoo_loop():
     api_instance = get_api()
     try:
         while True:
-            last_model = fsdb.get_latest_model()[0]
+            last_model = fsdb.get_latest_pb()[0]
             if last_model_queued < last_model:
                 print("Adding models {} to {} to be scheduled".format(
                     last_model_queued+1, last_model))
@@ -110,7 +110,7 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 8:
+            if len(r.items) < 25:
                 if not desired_pairs:
                     time.sleep(60*5)
                     continue

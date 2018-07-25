@@ -39,7 +39,7 @@ bazel-bin/cc/main --mode=eval \
   --model=$BASENAME_BLACK \
   --model_two=$BASENAME_WHITE \
   --sgf_dir "gs://$SGF_BUCKET_NAME/sgf/eval/$DATE" \
-  --num_readouts=1000 \
-  --resign_threshold=0.90
+  --num_readouts=500 \
+  --resign_threshold=0.95
 
 echo Finished an evaluation game!

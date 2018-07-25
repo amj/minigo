@@ -1,4 +1,4 @@
-FROM gcr.io/$PROJECT/cc-base:0.17
+FROM gcr.io/tensor-go/cc-base:0.17
 
 COPY evaluator_cc_wrapper.sh /app
 

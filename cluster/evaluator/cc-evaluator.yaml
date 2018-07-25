@@ -3,7 +3,7 @@ kind: Job
 metadata:
   name: minigo-cc-evaluator-$JOBNAME
 spec:
-  parallelism: 10
+  parallelism: 5
   completions: 10
   template:
     metadata:
