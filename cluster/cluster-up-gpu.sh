@@ -20,6 +20,9 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source ${SCRIPT_DIR}/common.sh
 source ${SCRIPT_DIR}/utils.sh
 
+ZONE=europe-west4-a
+CLUSTER_NAME=minigo-eval
+NUM_NODES=50
 echo "GPU Cluster Creation"
 echo "--------------------------------------"
 echo "Using Project:      ${PROJECT}"
@@ -33,9 +36,10 @@ check_gcloud_exists
 # Create a small Kubernetes gpu cluster.
 gcloud beta container clusters create \
   --num-nodes ${NUM_NODES} \
-  --accelerator type=nvidia-tesla-k80,count=1 \
-  --machine-type n1-standard-2 \
-  --disk-size 20 \
+  --accelerator type=nvidia-tesla-p100,count=2 \
+  --machine-type n1-standard-16 \
+  --preemptible \
+  --disk-size 80 \
   --zone=$ZONE \
   --cluster-version=$K8S_VERSION \
   --project=$PROJECT \
