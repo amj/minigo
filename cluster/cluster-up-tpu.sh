@@ -20,8 +20,8 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source ${SCRIPT_DIR}/common.sh
 source ${SCRIPT_DIR}/utils.sh
 
-export NUM_NODES=2
-export CLUSTER_NAME=minigo-tpu
+export NUM_NODES=8
+export CLUSTER_NAME=minigo2-tpu
 ZONE=us-central1-f
 
 echo "TPU Cluster Creation"
@@ -40,11 +40,11 @@ gcloud beta container clusters create \
     --zone=$ZONE \
     --cluster-version=1.10 \
     --scopes=cloud-platform \
-    --create-subnetwork name=tpu-cluster,range=/18 \
+    --create-subnetwork name=$CLUSTER_NAME,range=/18 \
     --enable-ip-alias \
     --enable-tpu \
     --machine-type n1-standard-16 \
-    --disk-size 60 \
+    --disk-size 30 \
     --num-nodes $NUM_NODES \
     $CLUSTER_NAME
     #--tpu-ipv4-cidr=/18 \
