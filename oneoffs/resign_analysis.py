@@ -31,6 +31,7 @@ def crawl(sgf_directory='sgf', print_summary=True):
     other_thresh = 0.9
     sgfs = lambda root,fils: [os.path.join(root, f) for f in fils if f.endswith('.sgf')]
     fs = [ i for sublist in [sgfs(root, files) for root, _, files in os.walk(sgf_directory)] for i in sublist]
+    b_wins_holdout, w_wins_holdout = 0, 0
     for filename in tqdm(fs):
 
           data = open(filename).read()
@@ -41,16 +42,15 @@ def crawl(sgf_directory='sgf', print_summary=True):
           else:
               result = result.group(1)
 
-          threshold = re.search("Resign Threshold: -(\d.\d*)", data)
+          threshold = re.search("C\[Resign Threshold: -(\d.\d*)", data)
           if not threshold:
-              print("No threshold found for ", filename)
+              threshold= 1.0
+              num_resign_disabled += 1
           else:
               threshold = float(threshold.group(1))
-              if threshold == 1.0:
-                  num_resign_disabled += 1
 
           tot_files += 1
-          q_values = list(map(float, re.findall("C\[(-?\d.\d*)", data)))
+          q_values = list(map(float, re.findall("\n(-?\d.\d*)", data)))
           if result == "B":
               look_for = min
           else:
@@ -62,6 +62,11 @@ def crawl(sgf_directory='sgf', print_summary=True):
           if threshold == 1.0 and abs(look_for(q_values)) > other_thresh:
               bad_resigns += 1
               bad_resign_files.append(filename)
+          if threshold == 1.0:
+              if result == "B":
+                  b_wins_holdout += 1
+              else:
+                  w_wins_holdout += 1
 
           if look_for == min and min(q_values) < max_b_upset['value']:
               max_b_upset = {"filename": filename,
@@ -75,6 +80,8 @@ def crawl(sgf_directory='sgf', print_summary=True):
         b_upsets = np.array([q for q in worst_qs if q < 0])
         w_upsets = np.array([q for q in worst_qs if q > 0])
         both = np.array(list(map(abs, worst_qs)))
+        print("b_wins of holdout games:", b_wins_holdout)
+        print("w_wins of holdout games:", w_wins_holdout)
         print("Biggest w upset:", max_w_upset)
         print("Biggest b upset:", max_b_upset)
         print ("99th percentiles (both/w/b)")
