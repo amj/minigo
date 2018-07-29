@@ -23,10 +23,11 @@ import json
 import os
 import argh
 import fsdb
+import random
 import time
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job names
@@ -40,6 +41,8 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     api_instance = get_api()
 
     raw_job_conf = open("cluster/evaluator/cc-evaluator.yaml").read()
+
+    os.environ['BUCKET_NAME'] = bucket_name
 
     os.environ['MODEL_BLACK'] = m1_path
     os.environ['MODEL_WHITE'] = m2_path
@@ -71,7 +74,6 @@ def same_run_eval(black_num=0, white_num=0):
 
     b = fsdb.get_model(black_num)
     w = fsdb.get_model(white_num)
-    bucket = fsdb.eval_dir
 
     b_model_path = os.path.join(fsdb.models_dir(), b)
     w_model_path = os.path.join(fsdb.models_dir(), w)
@@ -79,7 +81,7 @@ def same_run_eval(black_num=0, white_num=0):
     launch_eval_job(b_model_path + ".pb",
                w_model_path + ".pb",
                "{:d}-{:d}".format(black_num, white_num),
-               bucket)
+               flags.FLAGS.bucket_name)
 
 
 def zoo_loop():
@@ -95,6 +97,7 @@ def zoo_loop():
     """
     desired_pairs = restore_pairs() or []
     last_model_queued = restore_last_model()
+    random.shuffle(desired_pairs)
 
     api_instance = get_api()
     try:
@@ -110,7 +113,7 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 25:
+            if len(r.items) < 40:
                 if not desired_pairs:
                     time.sleep(60*5)
                     continue
@@ -127,7 +130,7 @@ def zoo_loop():
             else:
                 print("{}\t{} jobs outstanding.".format(
                     time.strftime("%I:%M:%S %p"), len(r.items)))
-            time.sleep(30)
+            time.sleep(20)
     except:
         print("Unfinished pairs:")
         print(sorted(desired_pairs))
@@ -188,11 +191,9 @@ def make_pairs_for_model(model_num=0):
         return
     pairs = []
     pairs += [[model_num, model_num - i]
-              for i in range(1, 10)if model_num - i > 0]
+              for i in range(1, 5)if model_num - i > 0]
     pairs += [[model_num, model_num - i]
-              for i in range(10, 20, 2)if model_num - i > 0]
-    pairs += [[model_num, model_num - i]
-              for i in range(20, 51, 5)if model_num - i > 0]
+              for i in range(5, 61, 10)if model_num - i > 0]
     return pairs
 
 
