@@ -27,7 +27,7 @@ import random
 import time
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job names
@@ -83,6 +83,38 @@ def same_run_eval(black_num=0, white_num=0):
                "{:d}-{:d}".format(black_num, white_num),
                flags.FLAGS.bucket_name)
 
+def find_uncertain_pairs(ratings, top_n=15, per_n=3):
+    """ Find the maximally interesting pairs of players to match up
+    First, sort the ratings by uncertainty.
+    Then, take the ten highest players with the highest uncertainty
+    For each of them, call them `p1`
+    Sort all the models by their distance from p1's rating and take the 20 closest
+    Choose the model with the greatest age difference from among those candidates
+
+    'ratings' is a list of (model_num, rating, uncertainty) tuples
+    """
+
+    ratings.sort(key=lambda r: r[2], reverse=True)
+
+    res = []
+    for p1 in ratings[:top_n]:
+        candidate_p2s = list(sorted(ratings, key=lambda p2_tup: abs(p1[1] - p2_tup[1])))[:20]
+        for p2 in sorted(candidate_p2s,key=lambda p2: abs(p1[0] - p2[0]), reverse=True)[:per_n]:
+            if p1[0] != p2[0]:
+                res.append([p1[0], p2[0]])
+    return res
+
+def add_uncertain_pairs():
+    ratings = fetch_ratings()
+    new_pairs = find_uncertain_pairs(ratings)
+    desired_pairs = restore_pairs() or []
+    desired_pairs += new_pairs
+    print("added %d new pairs" % len(new_pairs))
+    print(set([p[0] for p in new_pairs]))
+    with open('uncertain_pairs.json', 'a') as f:
+        json.dump(new_pairs, f)
+    save_pairs(desired_pairs)
+
 
 def zoo_loop():
     """Manages creating and cleaning up match jobs.
@@ -113,9 +145,13 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 40:
+            if len(r.items) < 30:
                 if not desired_pairs:
-                    time.sleep(60*5)
+                    ratings = fetch_ratings()
+                    new_pairs = find_uncertain_pairs(ratings)
+                    with open('uncertain_pairs.json', 'a') as f:
+                        json.dump(new_pairs, f)
+                    desired_pairs = new_pairs
                     continue
                 next_pair = desired_pairs.pop()  # take our pair off
                 print("Enqueuing:", next_pair)
@@ -137,6 +173,15 @@ def zoo_loop():
         save_pairs(sorted(desired_pairs))
         save_last_model(last_model)
         raise
+
+def fetch_ratings():
+    import requests
+    try:
+        ratings = eval(requests.get('http://cloudygo.com/v9-19x19/json/ratings.json').content)
+        return ratings
+    except:
+        print("Died getting ratings")
+        return []
 
 
 def restore_pairs():
@@ -198,7 +243,7 @@ def make_pairs_for_model(model_num=0):
 
 
 parser = argparse.ArgumentParser()
-argh.add_commands(parser, [zoo_loop, same_run_eval, cleanup, launch_eval_job])
+argh.add_commands(parser, [zoo_loop, same_run_eval, cleanup, launch_eval_job, add_uncertain_pairs])
 
 if __name__ == '__main__':
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)
