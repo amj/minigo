@@ -75,7 +75,6 @@ if args.engine == "py":
                    "main.py", "gtp",
                    "--load-file", args.model,
                    "--num_readouts", "1000",
-                   "--conv_width", "128",
                    "-v", "2"]
 elif args.engine == "cc":
     GTP_COMMAND = [
@@ -85,6 +84,7 @@ elif args.engine == "cc":
         "--soft_pick=false",
         "--inject_noise=false",
         "--disable_resign_pct=0",
+        "--parallel_games=1",
         "--ponder_limit=100000",
         "--courtesy_pass=true",
         "--mode=gtp"]
