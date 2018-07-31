@@ -27,7 +27,7 @@ import random
 import time
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job names
@@ -83,7 +83,7 @@ def same_run_eval(black_num=0, white_num=0):
                "{:d}-{:d}".format(black_num, white_num),
                flags.FLAGS.bucket_name)
 
-def find_uncertain_pairs(ratings, top_n=15, per_n=3):
+def find_uncertain_pairs(ratings, top_n=25, per_n=3):
     """ Find the maximally interesting pairs of players to match up
     First, sort the ratings by uncertainty.
     Then, take the ten highest players with the highest uncertainty
@@ -94,6 +94,8 @@ def find_uncertain_pairs(ratings, top_n=15, per_n=3):
     'ratings' is a list of (model_num, rating, uncertainty) tuples
     """
 
+    ratings.sort()
+    ratings = ratings[100:] # filter off the first 100 models, which improve too fast.
     ratings.sort(key=lambda r: r[2], reverse=True)
 
     res = []
@@ -104,16 +106,18 @@ def find_uncertain_pairs(ratings, top_n=15, per_n=3):
                 res.append([p1[0], p2[0]])
     return res
 
-def add_uncertain_pairs():
+def add_uncertain_pairs(dry_run=False):
     ratings = fetch_ratings()
     new_pairs = find_uncertain_pairs(ratings)
     desired_pairs = restore_pairs() or []
     desired_pairs += new_pairs
     print("added %d new pairs" % len(new_pairs))
     print(set([p[0] for p in new_pairs]))
-    with open('uncertain_pairs.json', 'a') as f:
-        json.dump(new_pairs, f)
-    save_pairs(desired_pairs)
+    print(new_pairs)
+    if not dry_run:
+        with open('uncertain_pairs.json', 'a') as f:
+            json.dump(new_pairs, f)
+        save_pairs(desired_pairs)
 
 
 def zoo_loop():
@@ -145,8 +149,8 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 30:
-                if not desired_pairs:
+            if len(r.items) < 40:
+                if len(desired_pairs) == 0:
                     ratings = fetch_ratings()
                     new_pairs = find_uncertain_pairs(ratings)
                     with open('uncertain_pairs.json', 'a') as f:
@@ -164,8 +168,8 @@ def zoo_loop():
                 save_last_model(last_model)
 
             else:
-                print("{}\t{} jobs outstanding.".format(
-                    time.strftime("%I:%M:%S %p"), len(r.items)))
+                print("{}\t{} jobs outstanding. ({} to be scheduled)".format(
+                        time.strftime("%I:%M:%S %p"), len(r.items), len(desired_pairs)))
             time.sleep(20)
     except:
         print("Unfinished pairs:")
