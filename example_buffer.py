@@ -177,6 +177,9 @@ def _determine_chunk_to_make(write_dir):
 
     return chunk_to_make, False
 
+def get_window_size(chunk_num):
+    return min(500000, (chunk_num + 5) * 12000)
+
 def fill_and_wait_time(bufsize=dual_net.EXAMPLES_PER_GENERATION,
                   write_dir=None,
                   threads=32,
@@ -195,7 +198,7 @@ def fill_and_wait_time(bufsize=dual_net.EXAMPLES_PER_GENERATION,
     files = (tf.gfile.Glob(os.path.join(LOCAL_DIR, d, "*.zz"))
                  for d in reversed(hours)
              if tf.gfile.Exists(os.path.join(LOCAL_DIR, d)))
-    files = itertools.islice(files, 500000) 
+    files = itertools.islice(files, get_window_size(chunk_to_make))
 
     models = fsdb.get_models()
     buf.parallel_fill(list(itertools.chain.from_iterable(files)), threads=threads)
