@@ -178,7 +178,7 @@ def _determine_chunk_to_make(write_dir):
     return chunk_to_make, False
 
 def get_window_size(chunk_num):
-    return min(500000, (chunk_num + 5) * 12000)
+    return min(500000, (chunk_num + 5) * MINIMUM_NEW_GAMES)
 
 def fill_and_wait_time(bufsize=dual_net.EXAMPLES_PER_GENERATION,
                   write_dir=None,
