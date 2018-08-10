@@ -50,6 +50,32 @@ class BoardState {
   }
 }
 
+class GameNode {
+  move: BoardState.Move | null;
+  parent: GameNode | null;
+  children = new Array<GameNode>();
+
+  constructor(parent: GameNode | null, thisMove: BoardState.Move) {
+    this.move = thisMove;
+    if (parent) {
+      this.parent = parent;
+    }
+  }
+
+  maybeAddChild(move: BoardState.Move) {
+    for (let child of this.children) {
+      if (child.move == move) {
+      return child;
+      }
+    }
+
+    let child = new GameNode(this, move);
+    this.children.push(child);
+    return child;
+  }
+}
+
+
 // Game state.
 class GameState {
   numConsecutivePasses = 0;
@@ -57,6 +83,7 @@ class GameState {
   hoveredMove: number | null = null;
   moveNumber = 0;
   history = [new BoardState(null, null)];
+  node: GameNode;
 }
 let gameState = new GameState();
 
@@ -205,6 +232,9 @@ class Player {
 
 // Callback invoked when either a human or Minigo plays a valid move.
 function onMovePlayed(move: string) {
+  // first, let's add the node to our internal tree
+  // qGraph.setMoveScore(movenum, 0); 
+
   let gameOver = false;
   if (move == 'pass') {
     if (++gameState.numConsecutivePasses == 2) {
@@ -215,6 +245,14 @@ function onMovePlayed(move: string) {
     if (move == 'resign') {
       gameOver = true;
     }
+  }
+
+  // No 'resign' nodes allowed in sgf spec.
+  if (!gameState.node && move != 'resign') {
+    log.log("Root Created");
+    gameState.node = new GameNode(null, util.parseGtpPoint(move, N));
+  } else if (move != 'resign') {
+    gameState.node.maybeAddChild(util.parseGtpPoint(move, N));
   }
 
   log.scroll();
@@ -456,12 +494,28 @@ function defaultStderrHandler(line: string) {
   }
 }
 
+function playEchoHandler(line: string) {
+  let move = line.trim();
+  if (move != 'resign') {
+    let p = util.parseGtpPoint(move, N);
+    if (!gameState.node) {
+      gameState.node = new GameNode(null, p);
+    } else {
+      let n = gameState.node.maybeAddChild(p);
+      gameState.node = n;
+    }
+    qGraph.setMoveScore(gameState.history.length, 0);
+    gameState.history.push(new BoardState(null, p));
+  }
+}
+
 const STDERR_HANDLERS: Array<[string, gtpsock.StderrHandler]> = [
   ['mg-search:', searchHandler],
   ['mg-pv:', principalVariationHandler],
   ['mg-q:', qHandler],
   ['mg-n:', nHandler],
   ['mg-gamestate:', gameStateHandler],
+  ['mg-playecho:', playEchoHandler],
   ['', defaultStderrHandler],
 ];
 

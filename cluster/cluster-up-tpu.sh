@@ -21,7 +21,7 @@ source ${SCRIPT_DIR}/common.sh
 source ${SCRIPT_DIR}/utils.sh
 
 export NUM_NODES=2
-export CLUSTER_NAME=minigo-tpu
+export CLUSTER_NAME=minigo-tpu2
 ZONE=us-central1-f
 
 echo "TPU Cluster Creation"
@@ -34,17 +34,20 @@ echo "Overriding num nodes to: $NUM_NODES"
 
 check_gcloud_exists
 
+gcloud compute networks create $CLUSTER_NAME
+
 # Create a Kubernetes cluster. This setup is designed for creating large clusters.
 gcloud beta container clusters create \
     --project=$PROJECT \
     --zone=$ZONE \
     --cluster-version=1.10 \
     --scopes=cloud-platform \
+    --network=$CLUSTER_NAME \
     --create-subnetwork name=tpu-cluster,range=/18 \
     --enable-ip-alias \
     --enable-tpu \
     --machine-type n1-standard-16 \
-    --disk-size 60 \
+    --disk-size 50 \
     --num-nodes $NUM_NODES \
     $CLUSTER_NAME
     #--tpu-ipv4-cidr=/18 \
@@ -55,6 +58,6 @@ gcloud container clusters get-credentials $CLUSTER_NAME --project $PROJECT --zon
 #create_service_account_key
 
 # Import the credentials into the cluster as a secret
-kubectl create secret generic ${SERVICE_ACCOUNT}-creds --from-file=service-account.json=${SERVICE_ACCOUNT_KEY_LOCATION}
+#kubectl create secret generic ${SERVICE_ACCOUNT}-creds --from-file=service-account.json=${SERVICE_ACCOUNT_KEY_LOCATION}
 
 

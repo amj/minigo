@@ -49,6 +49,7 @@ GtpPlayer::GtpPlayer(std::unique_ptr<DualNet> network, const Options& options)
   RegisterCmd("loadsgf", &GtpPlayer::HandleLoadsgf);
   RegisterCmd("name", &GtpPlayer::HandleName);
   RegisterCmd("play", &GtpPlayer::HandlePlay);
+  RegisterCmd("ponder", &GtpPlayer::HandlePonder);
   RegisterCmd("ponder_limit", &GtpPlayer::HandlePonderLimit);
   RegisterCmd("readouts", &GtpPlayer::HandleReadouts);
   RegisterCmd("report_search_interval", &GtpPlayer::HandleReportSearchInterval);
@@ -86,11 +87,12 @@ bool GtpPlayer::MaybePonder() {
   //  1) Pondering is enabled.
   //  2) We haven't pondered too much.
   //  3) There's no GTP command pending on stdin.
-  //  4) It's the opponent's turn.
-  bool should_ponder =
-      (ponder_limit_ > 0 && ponder_count_ < ponder_limit_ &&
-       std::cin.rdbuf()->in_avail() == 0 && last_genmove_ != Color::kEmpty &&
-       last_genmove_ != root()->position.to_play());
+  //  4) It's the opponent's turn OR we are in 'ponder mode'
+  bool should_ponder = (ponder_limit_ > 0 && ponder_count_ < ponder_limit_ &&
+                        std::cin.rdbuf()->in_avail() == 0 &&
+                        ((last_genmove_ != Color::kEmpty &&
+                          last_genmove_ != root()->position.to_play()) ||
+                         ponder_));
 
   if (!should_ponder) {
     ponder_count_ = 0;
@@ -168,8 +170,8 @@ GtpPlayer::Response GtpPlayer::CheckArgsRange(absl::string_view cmd,
   if (args.size() < expected_min_args || args.size() > expected_max_args) {
     return Response::Error("expected between ", expected_min_args, " and ",
                            expected_max_args, " args for GTP command ", cmd,
-                           ", got ", args.size(), " args: ",
-                           absl::StrJoin(args, " "));
+                           ", got ", args.size(),
+                           " args: ", absl::StrJoin(args, " "));
   }
   return Response::Ok();
 }
@@ -420,8 +422,11 @@ GtpPlayer::Response GtpPlayer::HandleLoadsgf(absl::string_view cmd,
   NewGame();
 
   for (const auto& move : sgf::GetMainLineMoves(ast)) {
+    std::cerr << "mg-playecho: " << move.c << std::endl;
     PlayMove(move.c);
   }
+
+  HandleGamestate("gamestate", {});
 
   return Response::Ok();
 }
@@ -467,6 +472,12 @@ GtpPlayer::Response GtpPlayer::HandlePlay(absl::string_view cmd, CmdArgs args) {
   }
 
   PlayMove(c);
+  return Response::Ok();
+}
+
+GtpPlayer::Response GtpPlayer::HandlePonder(absl::string_view cmd,
+                                            CmdArgs args) {
+  ponder_ = !ponder_;
   return Response::Ok();
 }
 

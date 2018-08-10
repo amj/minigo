@@ -101,6 +101,7 @@ class GtpPlayer : public MctsPlayer {
   Response HandleLoadsgf(absl::string_view cmd, CmdArgs args);
   Response HandleName(absl::string_view cmd, CmdArgs args);
   Response HandlePlay(absl::string_view cmd, CmdArgs args);
+  Response HandlePonder(absl::string_view cmd, CmdArgs args);
   Response HandlePonderLimit(absl::string_view cmd, CmdArgs args);
   Response HandleReadouts(absl::string_view cmd, CmdArgs args);
   Response HandleReportSearchInterval(absl::string_view cmd, CmdArgs args);
@@ -112,6 +113,7 @@ class GtpPlayer : public MctsPlayer {
   // Set to Color::kEmpty when the board is cleared.
   Color last_genmove_ = Color::kEmpty;
 
+  bool ponder_ = false;
   int ponder_count_ = 0;
   int ponder_limit_;
   bool courtesy_pass_;
