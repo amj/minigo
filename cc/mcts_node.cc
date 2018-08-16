@@ -161,8 +161,6 @@ void MctsNode::InjectNoise(const std::array<float, kNumMoves>& noise) {
 MctsNode* MctsNode::SelectLeaf() {
   auto* node = this;
   for (;;) {
-    ++node->stats->N;
-
     // If a node has never been evaluated, we have no basis to select a child.
     if (!node->is_expanded) {
       return node;
@@ -189,9 +187,8 @@ void MctsNode::IncorporateResults(absl::Span<const float> move_probabilities,
   assert(!position.is_game_over());
 
   // If the node has already been selected for the next inference batch, we
-  // shouldn't select it again.
+  // shouldn't 'expand' it again.
   if (is_expanded) {
-    RevertVisits(up_to);
     return;
   }
 
@@ -233,21 +230,11 @@ void MctsNode::IncorporateEndGameResult(float value, MctsNode* up_to) {
   BackupValue(value, up_to);
 }
 
-void MctsNode::RevertVisits(MctsNode* up_to) {
-  auto* node = this;
-  for (;;) {
-    node->stats->N -= 1;
-    if (node == up_to) {
-      return;
-    }
-    node = node->parent;
-  }
-}
-
 void MctsNode::BackupValue(float value, MctsNode* up_to) {
   auto* node = this;
   for (;;) {
     node->stats->W += value;
+    ++node->stats->N;
     if (node == up_to) {
       return;
     }
@@ -259,7 +246,6 @@ void MctsNode::AddVirtualLoss(MctsNode* up_to) {
   auto* node = this;
   do {
     ++node->num_virtual_losses_applied;
-    node->stats->W += node->position.to_play() == Color::kBlack ? 1 : -1;
     node = node->parent;
   } while (node != nullptr && node != up_to);
 }
@@ -268,7 +254,6 @@ void MctsNode::RevertVirtualLoss(MctsNode* up_to) {
   auto* node = this;
   do {
     --node->num_virtual_losses_applied;
-    node->stats->W -= node->position.to_play() == Color::kBlack ? 1 : -1;
     node = node->parent;
   } while (node != nullptr && node != up_to);
 }
