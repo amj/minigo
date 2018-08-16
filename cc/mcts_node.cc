@@ -246,6 +246,7 @@ void MctsNode::AddVirtualLoss(MctsNode* up_to) {
   auto* node = this;
   do {
     ++node->num_virtual_losses_applied;
+    node->stats->W += node->position.to_play() == Color::kBlack ? 1 : -1;
     node = node->parent;
   } while (node != nullptr && node != up_to);
 }
@@ -254,6 +255,7 @@ void MctsNode::RevertVirtualLoss(MctsNode* up_to) {
   auto* node = this;
   do {
     --node->num_virtual_losses_applied;
+    node->stats->W -= node->position.to_play() == Color::kBlack ? 1 : -1;
     node = node->parent;
   } while (node != nullptr && node != up_to);
 }
@@ -267,7 +269,7 @@ void MctsNode::PruneChildren(Coord c) {
 
 std::array<float, kNumMoves> MctsNode::CalculateChildActionScore() const {
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
-  float U_scale = kPuct * std::sqrt(1.0f + N());
+  float U_scale = kPuct * std::sqrt(std::max<float>(1, N() - 1));
 
   std::array<float, kNumMoves> result;
   for (int i = 0; i < kNumMoves; ++i) {

@@ -53,11 +53,7 @@ class MctsNode {
   float W() const { return stats->W; }
   float P() const { return stats->P; }
   float original_P() const { return stats->original_P; }
-  // float Q() const { return W() / (1 + N()); }
-  float Q() const {
-    return W() - (position.to_play() * num_virtual_losses_applied) /
-                     (1 + N() + num_virtual_losses_applied);
-  }
+  float Q() const { return W() / (1 + N()); }
   float Q_perspective() const {
     return position.to_play() == Color::kBlack ? Q() : -Q();
   }
@@ -65,16 +61,11 @@ class MctsNode {
   float child_N(int i) const { return edges[i].N; }
   float child_W(int i) const { return edges[i].W; }
   float child_P(int i) const { return edges[i].P; }
-  float child_vlosses(int i) const {
-    return edges[i].num_virtual_losses_applied;
-  }
   float child_original_P(int i) const { return edges[i].original_P; }
-  float child_Q(int i) const {
-    return (child_W(i) + position.to_play() * child_vlosses(i)) /
-           (1 + child_N(i) + child_vlosses(i));
-  }
+  float child_Q(int i) const { return child_W(i) / (1 + child_N(i)); }
   float child_U(int i) const {
-    return kPuct * std::sqrt(1.0f + N()) * child_P(i) / (1 + child_N(i));
+    return kPuct * std::sqrt(std::max<float>(1, N() - 1)) * child_P(i) /
+           (1 + child_N(i));
   }
 
   std::string Describe() const;

@@ -36,73 +36,51 @@ static constexpr char kAlmostDoneBoard[] = R"(
     XXXXXOOOO
     XXXXOOOOO)";
 
+// Test puct and child action score calculation
 TEST(MctsNodeTest, UpperConfidenceBound) {
-  /*
-        self.assertEqual(root.N, 1)
-        self.assertAlmostEqual(
-            root.child_U[0], puct_policy * math.sqrt(1) / (1 + 0))
-
-        leaf = root.select_leaf()
-        self.assertNotEqual(root, leaf)
-
-        # With the first child expanded.
-        self.assertEqual(root.N, 1)
-        self.assertAlmostEqual(
-            root.child_U[0], puct_policy * math.sqrt(1) / (1 + 0))
-        self.assertAlmostEqual(
-            root.child_U[1], puct_policy * math.sqrt(1) / (1 + 0))
-
-        leaf.add_virtual_loss(up_to=root)
-        leaf2 = root.select_leaf()
-
-        self.assertNotIn(leaf2, (root, leaf))
-
-        leaf.revert_virtual_loss(up_to=root)
-        leaf.incorporate_results(probs, 0.3, root)
-        leaf2.incorporate_results(probs, 0.3, root)
-
-        # With the 2nd child expanded.
-        self.assertEqual(root.N, 3)
-        self.assertAlmostEqual(
-            root.child_U[0], puct_policy * math.sqrt(2) / (1 + 1))
-        self.assertAlmostEqual(
-            root.child_U[1], puct_policy * math.sqrt(2) / (1 + 1))
-        self.assertAlmostEqual(
-            root.child_U[2], puct_policy * math.sqrt(2) / (1 + 0))
-      */
+  float epsilon = 1e-7;
   std::array<float, kNumMoves> probs;
   for (float& prob : probs) {
     prob = 0.02;
   }
-  auto root = TestablePosition("", Color::kBlack);
-  root.SelectLeaf()->IncorporateResults(probs, 0.5, &root);
-  auto puct_policy = kPuct * root.child_P([0]);
-  EXPECT_EQ(root.N(), 1);
-  EXPECT_NEAR(root.child_U[0], puct_policy * math.sqrt(1) / (1 + 0), .0001);
 
-  // Select a leaf under the root and verify...
-  auto leaf = root.SelectLeaf();
-  EXPECT_EQ(root.N(), 1);       // N not incremented yet.
-  EXPECT_NE(leaf, root);        // The selected leaf is different.
-  EXPECT_NEAR(root.child_U[0],  // the UCB hasn't changed yet.
-              puct_policy * math.sqrt(1) / (1 + 0), .0001);
+  MctsNode::EdgeStats root_stats;
+  MctsNode root(&root_stats, TestablePosition("", Color::kBlack));
+  auto* leaf = root.SelectLeaf();
+  EXPECT_EQ(&root, leaf);
+  leaf->IncorporateResults(probs, 0.5, &root);
 
-  leaf.AddVirtualLoss(root);
-  auto leaf2 = root.SelectLeaf();
-  EXPECT_NE(leaf2, leaf);
-  EXPECT_NE(leaf2, root);
+  // 0.02 are normalized to 1/82
+  EXPECT_NEAR(1.0 / 82, root.child_P(0), epsilon);
+  EXPECT_NEAR(1.0 / 82, root.child_P(1), epsilon);
+  double puct_policy = kPuct * 1.0 / 82;
+  ASSERT_EQ(1, root.N());
+  EXPECT_NEAR(puct_policy * std::sqrt(1) / (1 + 0), root.child_U(0), epsilon);
 
-  // Leaf #1 & 2 results come back.
-  leaf.RevertVirtualLoss(root);
-  leaf.IncorporateResults(probs, 0.3, root);
-  leaf2.IncorporateResults(probs, 0.3, root);
+  leaf = root.SelectLeaf();
+  leaf->IncorporateResults(probs, 0.5, &root);
+  EXPECT_NE(&root, leaf);
+  EXPECT_EQ(&root, leaf->parent);
+  EXPECT_EQ(Coord(0), leaf->move);
 
-  // Now, with the children expanded & backedup
-  EXPECT_EQ(root.N(), 3);
-  EXPECT_NEAR(root.child_U[0], puct_policy * math.sqrt(2) / (1 + 1), .0001);
-  EXPECT_NEAR(root.child_U[1], puct_policy * math.sqrt(2) / (1 + 1), .0001);
-  EXPECT_NEAR(root.child_U[2], puct_policy * math.sqrt(1) / (1 + 0), .0001);
+  // With the first child expanded.
+  ASSERT_EQ(2, root.N());
+  EXPECT_NEAR(puct_policy * std::sqrt(1) / (1 + 1), root.child_U(0), epsilon);
+  EXPECT_NEAR(puct_policy * std::sqrt(1) / (1 + 0), root.child_U(1), epsilon);
+
+  auto* leaf2 = root.SelectLeaf();
+  EXPECT_NE(&root, leaf2);
+  EXPECT_EQ(&root, leaf2->parent);
+  EXPECT_EQ(Coord(1), leaf2->move);
+  leaf2->IncorporateResults(probs, 0.5, &root);
+
+  // With the 2nd child expanded.
+  ASSERT_EQ(3, root.N());
+  EXPECT_NEAR(puct_policy * std::sqrt(2) / (1 + 1), root.child_U(0), epsilon);
+  EXPECT_NEAR(puct_policy * std::sqrt(2) / (1 + 1), root.child_U(1), epsilon);
+  EXPECT_NEAR(puct_policy * std::sqrt(2) / (1 + 0), root.child_U(2), epsilon);
 }
+
 // Verifies that no matter who is to play, when we know nothing else, the priors
 // should be respected, and the same move should be picked.
 TEST(MctsNodeTest, ActionFlipping) {
@@ -285,7 +263,7 @@ TEST(MctsNodeTest, NeverSelectIllegalMoves) {
   }
 }
 
-TEST(MctsNodeTest, DontPickUnexpandedChild) {
+TEST(MctsNodeTest, DontTraverseUnexpandedChild) {
   std::array<float, kNumMoves> probs;
   for (float& prob : probs) {
     prob = 0.001;
@@ -297,6 +275,7 @@ TEST(MctsNodeTest, DontPickUnexpandedChild) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
+  root_stats.N = 5;
   root.SelectLeaf()->IncorporateResults(probs, 0, &root);
 
   auto* leaf1 = root.SelectLeaf();
@@ -304,7 +283,7 @@ TEST(MctsNodeTest, DontPickUnexpandedChild) {
   leaf1->AddVirtualLoss(&root);
 
   auto* leaf2 = root.SelectLeaf();
-  EXPECT_EQ(leaf1, leaf2);
+  EXPECT_EQ(leaf1, leaf2);  // assert we didn't go below the first leaf.
 }
 
 // Verifies that even when one move is hugely more likely than all the others,
