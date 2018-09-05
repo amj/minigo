@@ -25,8 +25,10 @@ import argh
 import fsdb
 import time
 
+from ratings import ratings
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=20):
+
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job names
@@ -40,6 +42,8 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=20):
     api_instance = get_api()
 
     raw_job_conf = open("cluster/evaluator/cc-evaluator.yaml").read()
+
+    os.environ['BUCKET_NAME'] = bucket_name
 
     os.environ['MODEL_BLACK'] = m1_path
     os.environ['MODEL_WHITE'] = m2_path
@@ -71,7 +75,6 @@ def same_run_eval(black_num=0, white_num=0):
 
     b = fsdb.get_model(black_num)
     w = fsdb.get_model(white_num)
-    bucket = fsdb.eval_dir
 
     b_model_path = os.path.join(fsdb.models_dir(), b)
     w_model_path = os.path.join(fsdb.models_dir(), w)
@@ -79,7 +82,20 @@ def same_run_eval(black_num=0, white_num=0):
     launch_eval_job(b_model_path + ".pb",
                w_model_path + ".pb",
                "{:d}-{:d}".format(black_num, white_num),
-               bucket)
+               flags.FLAGS.bucket_name)
+
+
+def add_uncertain_pairs(dry_run=False):
+    new_pairs = ratings.suggest_pairs()
+    desired_pairs = restore_pairs() or []
+    desired_pairs += new_pairs
+    print("added %d new pairs" % len(new_pairs))
+    print(set([p[0] for p in new_pairs]))
+    print(new_pairs)
+    if not dry_run:
+        with open('pairlist.json', 'a') as f:
+            json.dump(new_pairs, f)
+        save_pairs(desired_pairs)
 
 
 def zoo_loop():
@@ -99,7 +115,7 @@ def zoo_loop():
     api_instance = get_api()
     try:
         while True:
-            last_model = fsdb.get_latest_model()[0]
+            last_model = fsdb.get_latest_pb()[0]
             if last_model_queued < last_model:
                 print("Adding models {} to {} to be scheduled".format(
                     last_model_queued+1, last_model))
@@ -110,10 +126,16 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 8:
-                if not desired_pairs:
-                    time.sleep(60*5)
-                    continue
+            if len(r.items) < 28:
+                if len(desired_pairs) == 0:
+                    root = os.path.abspath("sgf/eval")
+                    print("Out of pairs!  Syncing new eval games...")
+                    ratings.sync(root)
+                    print("Updating ratings and getting suggestions...")
+                    add_uncertain_pairs()
+                    desired_pairs = restore_pairs() or []
+                    print("Got {} new pairs".format(len(desired_pairs)))
+
                 next_pair = desired_pairs.pop()  # take our pair off
                 print("Enqueuing:", next_pair)
                 try:
@@ -125,8 +147,8 @@ def zoo_loop():
                 save_last_model(last_model)
 
             else:
-                print("{}\t{} jobs outstanding.".format(
-                    time.strftime("%I:%M:%S %p"), len(r.items)))
+                print("{}\t{} jobs outstanding. ({} to be scheduled)".format(
+                        time.strftime("%I:%M:%S %p"), len(r.items), len(desired_pairs)))
             time.sleep(30)
     except:
         print("Unfinished pairs:")
@@ -137,13 +159,13 @@ def zoo_loop():
 
 
 def restore_pairs():
-    with open('closest_pairs.json') as f:
+    with open('pairlist.json') as f:
         pairs = json.loads(f.read())
     return pairs
 
 
 def save_pairs(pairs):
-    with open('closest_pairs.json', 'w') as f:
+    with open('pairlist.json', 'w') as f:
         json.dump(pairs, f)
 
 
@@ -188,16 +210,14 @@ def make_pairs_for_model(model_num=0):
         return
     pairs = []
     pairs += [[model_num, model_num - i]
-              for i in range(1, 10)if model_num - i > 0]
+              for i in range(1, 5)if model_num - i > 0]
     pairs += [[model_num, model_num - i]
-              for i in range(10, 20, 2)if model_num - i > 0]
-    pairs += [[model_num, model_num - i]
-              for i in range(20, 51, 5)if model_num - i > 0]
+              for i in range(5, 71, 10)if model_num - i > 0]
     return pairs
 
 
 parser = argparse.ArgumentParser()
-argh.add_commands(parser, [zoo_loop, same_run_eval, cleanup, launch_eval_job])
+argh.add_commands(parser, [zoo_loop, same_run_eval, cleanup, launch_eval_job, add_uncertain_pairs])
 
 if __name__ == '__main__':
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)
