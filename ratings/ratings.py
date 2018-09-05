@@ -20,6 +20,9 @@ import sqlite3
 import os, os.path
 import re
 import fsdb
+import math
+from tqdm import tqdm
+import datetime as dt
 
 
 EVAL_REGEX = "(\d*)-minigo-cc-evaluator-"
@@ -28,11 +31,19 @@ PW_REGEX = "PW\[(.*?)\]"
 PB_REGEX = "PB\[(.*?)\]"
 RESULT_REGEX = "RE\[(.*?)\]"
 
-def maybe_insert_model(db, bucket, name, num): 
+def maybe_insert_model(db, bucket, name, num):
     with db:
-        db.execute( """insert or ignore into models(model_name, model_num, bucket, num_games, num_wins, black_games, black_wins, white_games, white_wins) 
+        db.execute( """insert or ignore into models(
+                       model_name, model_num, bucket,
+                       num_games, num_wins, black_games, black_wins, white_games, white_wins)
                                           values(?, ?, ?, 0, 0, 0, 0, 0, 0)""",
                                           [name, num, bucket])
+def model_id(name_or_num):
+    db = sqlite3.connect("ratings.db")
+    bucket = fsdb.models_dir()
+    if not isinstance(name_or_num, str):
+      name_or_num = fsdb.get_model(name_or_num)
+    return rowid_for(db, bucket, name_or_num)
 
 def rowid_for(db, bucket,name):
     try:
@@ -44,7 +55,8 @@ def rowid_for(db, bucket,name):
 
 def import_files(files):
     db = sqlite3.connect("ratings.db")
-    for _file in files:
+    new_games = 0
+    for _file in tqdm(files):
         match = re.match(EVAL_REGEX, os.path.basename(_file))
         if not match:
             print("Bad file: ", _file)
@@ -75,7 +87,7 @@ def import_files(files):
 
             # insert into games or bail
             game_id = None
-            try: 
+            try:
                 with db:
                     c = db.cursor()
                     c.execute(
@@ -104,37 +116,133 @@ def import_files(files):
                     c.execute("update models set white_games = white_games + 1, white_wins = white_wins + 1 where id = ?", (w_id,))
                     c.execute("insert into wins(game_id, model_winner, model_loser) values(?, ?, ?)", 
                                 [game_id, w_id, b_id])
-                db.commit() 
+                db.commit()
+                new_games += 1
 
         except sqlite3.OperationalError:
             print("Bailed!")
             db.rollback()
-            db.commit()
             raise
         except:
             print("Bailed!")
             db.rollback()
-            db.commit()
             raise
+    print("Added {} new games to database".format(new_games))
 
 
-def main():
-    root = "/Users/andrew/work/minigo2/sgf/eval/" 
-    dirs = os.listdir(root)
-    print(dirs)
+def compute_ratings():
+    db = sqlite3.connect("ratings.db")
+    with db:
+        data = db.execute("select model_winner, model_loser from wins").fetchall()
+    model_ids = set([d[0] for d in data]).union(set([d[1] for d in data]))
+
+    # Map model_ids to a contiguous range.
+    ordered = sorted(model_ids)
+    new_id = {}
+    for i, m in enumerate(ordered):
+        new_id[m] = i
+
+    # A function to rewrite the model_ids in our pairs
+    def ilsr_data(d):
+        p1, p2 = d
+        p1 = new_id[p1]
+        p2 = new_id[p2]
+        return (p1, p2)
+
+    pairs = list(map(ilsr_data, data))
+    ilsr_param = choix.ilsr_pairwise(
+        len(ordered),
+        pairs,
+        alpha=0.00001,
+        max_iter=500)
+
+    hessian = choix.opt.PairwiseFcts(pairs, penalty=.1).hessian(ilsr_param)
+    std_err = np.sqrt(np.diagonal(np.linalg.inv(hessian)))
+
+    # Elo conversion
+    elo_mult = 400 / math.log(10)
+
+    min_rating = min(ilsr_param)
+    ratings = {}
+    for model, param, err in zip(ordered, ilsr_param, std_err):
+        ratings[model] = (elo_mult * (param - min_rating), elo_mult * err)
+
+    return ratings
+
+
+def top_n(n=20):
+  ratings = compute_ratings()
+  db = sqlite3.connect("ratings.db")
+
+  top_n = [tup[0] for tup in sorted(ratings.items(), key=lambda i: i[1])[-n:]]
+
+  names = db.execute("select model_name from models where id in ({})".format(
+                                  ",".join(("?",) * n)),
+             top_n).fetchall()
+
+  return [(n[0], rat) for n, rat in zip(names, [ratings[i] for i in top_n])] 
+
+
+def ingest_dirs(root, dirs):
     for d in dirs:
         if os.path.isdir(os.path.join(root,d)):
             fs = [os.path.join(root, d, f) for f in os.listdir(os.path.join(root, d))]
             print("Importing from {}".format(d))
             import_files(fs)
 
-def rate():
+
+def last_timestamp():
     db = sqlite3.connect("ratings.db")
     with db:
-        c = db.cursor()
-        c.execute("select model_winner, model_loser from wins")
-        data = c.fetchall()
+        ts = db.execute("select timestamp from games order by timestamp desc limit 1").fetchone()
+    return ts[0] if ts else None
 
+
+def suggest_pairs(top_n=20, per_n=3):
+    """ Find the maximally interesting pairs of players to match up
+    First, sort the ratings by uncertainty.
+    Then, take the ten highest players with the highest uncertainty
+    For each of them, call them `p1`
+    Sort all the models by their distance from p1's rating and take the 20 closest
+    Choose the model with the greatest age difference from among those candidates
+
+    'ratings' is a list of (model_num, rating, uncertainty) tuples
+    """
+
+    ratings = [(k, v[0], v[1]) for k,v in compute_ratings().items()]
+    ratings.sort()
+    ratings = ratings[100:] # filter off the first 100 models, which improve too fast.
+
+    ratings.sort(key=lambda r: r[2], reverse=True)
+
+    res = []
+    for p1 in ratings[:top_n]:
+        candidate_p2s = list(sorted(ratings, key=lambda p2_tup: abs(p1[1] - p2_tup[1])))[:20]
+        for p2 in sorted(candidate_p2s,key=lambda p2: abs(p1[0] - p2[0]), reverse=True)[:per_n]:
+            if p1[0] != p2[0]:
+                res.append([p1[0], p2[0]])
+    return res
+
+
+def sync(root):
+    import subprocess
+    cmd = "gsutil -m rsync -r {0} {1}".format(fsdb.eval_dir(), root)
+    print(cmd)
+    subprocess.call(cmd.split())
+    dirs = os.listdir(root)
+    last_ts = last_timestamp()
+    if last_ts:
+        # Build a list of days from the day before our last timestamp to today
+        num_days = (dt.datetime.utcnow() - dt.datetime.utcfromtimestamp(last_ts) + dt.timedelta(days=1)).days
+        ds = [(dt.datetime.utcnow() - dt.timedelta(days=d)).strftime("%Y-%m-%d") for d in range(num_days+1)] 
+        ingest_dirs(root, ds)
+    else:
+        ingest_dirs(root, dirs)
+
+
+def main():
+    root = os.path.abspath("sgf/eval")
+    sync(root)
 
 if __name__ == '__main__':
     main()
