@@ -14,6 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """ 
 
+import sys
+sys.path.insert(0, '.')
+
+from absl import flags
+
 import choix
 import numpy as np
 import sqlite3
@@ -260,6 +265,11 @@ def sync(root):
 def main():
     root = os.path.abspath("sgf/eval")
     sync(root)
+    for r in list(reversed(top_n())):
+        print("{:20} - {:.3f} ({:.3f})".format(r[0], r[1][0], r[1][1]))
+    db = sqlite3.connect("ratings.db")
+    print(db.execute("select count(*) from wins").fetchone(), "games")
 
 if __name__ == '__main__':
+    remaining_argv = flags.FLAGS(sys.argv, known_only=True)
     main()
