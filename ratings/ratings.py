@@ -20,6 +20,7 @@ import sqlite3
 import os, os.path
 import re
 import fsdb
+import random
 import math
 from tqdm import tqdm
 import datetime as dt
@@ -44,6 +45,15 @@ def model_id(name_or_num):
     if not isinstance(name_or_num, str):
       name_or_num = fsdb.get_model(name_or_num)
     return rowid_for(db, bucket, name_or_num)
+
+def model_num_for(model_id):
+    try:
+        db = sqlite3.connect("ratings.db")
+        return db.execute("select model_num from models where id = ?", (model_id,)).fetchone()[0]
+    except:
+        print("No model found for id: {}".format(model_id))
+        raise
+        return None
 
 def rowid_for(db, bucket,name):
     try:
@@ -131,6 +141,9 @@ def import_files(files):
 
 
 def compute_ratings():
+    """ Returns the tuples of (model_id, rating, sigma)
+    N.B. that `model_id` here is NOT the model number in the run
+    """
     db = sqlite3.connect("ratings.db")
     with db:
         data = db.execute("select model_winner, model_loser from wins").fetchall()
@@ -153,8 +166,8 @@ def compute_ratings():
     ilsr_param = choix.ilsr_pairwise(
         len(ordered),
         pairs,
-        alpha=0.00001,
-        max_iter=500)
+        alpha=0.0000001,
+        max_iter=800)
 
     hessian = choix.opt.PairwiseFcts(pairs, penalty=.1).hessian(ilsr_param)
     std_err = np.sqrt(np.diagonal(np.linalg.inv(hessian)))
@@ -164,23 +177,23 @@ def compute_ratings():
 
     min_rating = min(ilsr_param)
     ratings = {}
-    for model, param, err in zip(ordered, ilsr_param, std_err):
-        ratings[model] = (elo_mult * (param - min_rating), elo_mult * err)
+
+    for model_id, param, err in zip(ordered, ilsr_param, std_err):
+        ratings[model_id] = (elo_mult * (param - min_rating), elo_mult * err)
 
     return ratings
 
 
 def top_n(n=20):
-  ratings = compute_ratings()
+  rating_tups = compute_ratings()
+  top_n = [tup[0] for tup in sorted(rating_tups.items(), key=lambda i: i[1])[-n:]]
+
   db = sqlite3.connect("ratings.db")
-
-  top_n = [tup[0] for tup in sorted(ratings.items(), key=lambda i: i[1])[-n:]]
-
   names = db.execute("select model_name from models where id in ({})".format(
                                   ",".join(("?",) * n)),
              top_n).fetchall()
 
-  return [(n[0], rat) for n, rat in zip(names, [ratings[i] for i in top_n])] 
+  return [(n[0], rat) for n, rat in zip(names, [rating_tups[i] for i in top_n])] 
 
 
 def ingest_dirs(root, dirs):
@@ -198,7 +211,7 @@ def last_timestamp():
     return ts[0] if ts else None
 
 
-def suggest_pairs(top_n=20, per_n=3):
+def suggest_pairs(top_n=10, per_n=3):
     """ Find the maximally interesting pairs of players to match up
     First, sort the ratings by uncertainty.
     Then, take the ten highest players with the highest uncertainty
@@ -207,20 +220,24 @@ def suggest_pairs(top_n=20, per_n=3):
     Choose the model with the greatest age difference from among those candidates
 
     'ratings' is a list of (model_num, rating, uncertainty) tuples
+
+    Returns a list of *model numbers*, not model ids.
     """
 
-    ratings = [(k, v[0], v[1]) for k,v in compute_ratings().items()]
+    ratings = [(model_num_for(k), v[0], v[1]) for k,v in compute_ratings().items()]
     ratings.sort()
-    ratings = ratings[100:] # filter off the first 100 models, which improve too fast.
+    ratings = ratings[70:] # filter off the first 100 models, which improve too fast.
 
     ratings.sort(key=lambda r: r[2], reverse=True)
 
     res = []
     for p1 in ratings[:top_n]:
         candidate_p2s = list(sorted(ratings, key=lambda p2_tup: abs(p1[1] - p2_tup[1])))[:20]
-        for p2 in sorted(candidate_p2s,key=lambda p2: abs(p1[0] - p2[0]), reverse=True)[:per_n]:
-            if p1[0] != p2[0]:
-                res.append([p1[0], p2[0]])
+        choices = random.sample([c for c in candidate_p2s if c[0] != p1[0]], per_n)
+        print("Pairing {}, sigma {:.2f}".format(p1[0], p1[2]))
+        for p2 in choices:
+            res.append([p1[0], p2[0]])
+            print("   {}, ratings delta {:.2f}".format(p2[0], abs(p1[1]-p2[1])))
     return res
 
 

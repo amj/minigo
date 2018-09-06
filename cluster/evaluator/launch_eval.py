@@ -91,7 +91,8 @@ def add_uncertain_pairs(dry_run=False):
     desired_pairs += new_pairs
     print("added %d new pairs" % len(new_pairs))
     print(set([p[0] for p in new_pairs]))
-    print(new_pairs)
+    for p in new_pairs:
+        print(p)
     if not dry_run:
         with open('pairlist.json', 'a') as f:
             json.dump(new_pairs, f)
@@ -135,6 +136,8 @@ def zoo_loop():
                     add_uncertain_pairs()
                     desired_pairs = restore_pairs() or []
                     print("Got {} new pairs".format(len(desired_pairs)))
+                    for row in ratings.top_n():
+                      print(row[0], row[1])
 
                 next_pair = desired_pairs.pop()  # take our pair off
                 print("Enqueuing:", next_pair)
