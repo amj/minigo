@@ -145,13 +145,14 @@ def import_files(files):
     print("Added {} new games to database".format(new_games))
 
 
-def compute_ratings():
+def compute_ratings(data=None):
     """ Returns the tuples of (model_id, rating, sigma)
     N.B. that `model_id` here is NOT the model number in the run
     """
-    db = sqlite3.connect("ratings.db")
-    with db:
-        data = db.execute("select model_winner, model_loser from wins").fetchall()
+    if data is None:
+        db = sqlite3.connect("ratings.db")
+        with db:
+            data = db.execute("select model_winner, model_loser from wins").fetchall()
     model_ids = set([d[0] for d in data]).union(set([d[1] for d in data]))
 
     # Map model_ids to a contiguous range.
@@ -171,7 +172,7 @@ def compute_ratings():
     ilsr_param = choix.ilsr_pairwise(
         len(ordered),
         pairs,
-        alpha=0.0000001,
+        alpha=0.0001,
         max_iter=800)
 
     hessian = choix.opt.PairwiseFcts(pairs, penalty=.1).hessian(ilsr_param)
@@ -191,15 +192,9 @@ def compute_ratings():
 
 def top_n(n=20):
   rating_tups = compute_ratings()
-  top_n = [tup[0] for tup in sorted(rating_tups.items(), key=lambda i: i[1])[-n:]]
-
-  db = sqlite3.connect("ratings.db")
-  names = db.execute("select model_name from models where id in ({})".format(
-                                  ",".join(("?",) * n)),
-             top_n).fetchall()
-
-  return [(n[0], rat) for n, rat in zip(names, [rating_tups[i] for i in top_n])] 
-
+  r = compute_ratings()
+  return [(model_num_for(k),v) for v,k in
+          sorted([(v,k) for k,v in r.items()])[-n:][::-1]]
 
 def ingest_dirs(root, dirs):
     for d in dirs:
@@ -248,27 +243,40 @@ def suggest_pairs(top_n=10, per_n=3):
 
 def sync(root):
     import subprocess
-    cmd = "gsutil -m rsync -r {0} {1}".format(fsdb.eval_dir(), root)
-    print(cmd)
-    subprocess.call(cmd.split())
-    dirs = os.listdir(root)
     last_ts = last_timestamp()
     if last_ts:
         # Build a list of days from the day before our last timestamp to today
         num_days = (dt.datetime.utcnow() - dt.datetime.utcfromtimestamp(last_ts) + dt.timedelta(days=1)).days
         ds = [(dt.datetime.utcnow() - dt.timedelta(days=d)).strftime("%Y-%m-%d") for d in range(num_days+1)] 
+        for d in ds:
+            #TODO: ensure exists os.path.join(root,d)
+            cmd = "gsutil -m rsync -r {0} {1}".format(os.path.join(fsdb.eval_dir(),d), os.path.join(root, d))
+            print(cmd)
+            subprocess.call(cmd.split())
+
         ingest_dirs(root, ds)
     else:
+        cmd = "gsutil -m rsync -r {0} {1}".format(fsdb.eval_dir(), root)
+        print(cmd)
+        subprocess.call(cmd.split())
+        dirs = os.listdir(root)
         ingest_dirs(root, dirs)
 
 
 def main():
     root = os.path.abspath("sgf/eval")
     sync(root)
-    for r in list(reversed(top_n())):
-        print("{:20} - {:.3f} ({:.3f})".format(r[0], r[1][0], r[1][1]))
+    r = compute_ratings()
+    for v,k in sorted([(v,k) for k,v in r.items()])[-20:][::-1]: 
+        print (model_num_for(k),v)
     db = sqlite3.connect("ratings.db")
-    print(db.execute("select count(*) from wins").fetchone(), "games")
+    print(db.execute("select count(*) from wins").fetchone()[0], "games")
+    models = fsdb.get_models()
+    for m in models[-10:]:
+        try:
+            print(m[1], r[model_id(m[0])])
+        except KeyError:
+            continue
 
 if __name__ == '__main__':
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)
