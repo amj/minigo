@@ -147,7 +147,7 @@ def zoo_loop():
             r = api_instance.list_job_for_all_namespaces()
             if len(r.items) < 28:
                 if len(desired_pairs) == 0:
-                    root = os.path.abspath("sgf/eval")
+                    root = os.path.abspath("sgf/tensor-go-minigo-v10-19/sgf/eval")
                     print("Out of pairs!  Syncing new eval games...")
                     ratings.sync(root)
                     print("Updating ratings and getting suggestions...")

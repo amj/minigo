@@ -68,58 +68,66 @@ def rowid_for(db, bucket,name):
         return None
 
 
-def import_files(files):
+def import_files(files, bucket=None):
+    if bucket is None:
+        bucket = fsdb.models_dir()
+
+    print("Importing for bucket:", bucket)
     db = sqlite3.connect("ratings.db")
     new_games = 0
-    for _file in tqdm(files):
-        match = re.match(EVAL_REGEX, os.path.basename(_file))
-        if not match:
-            print("Bad file: ", _file)
-            continue
-        timestamp = match.groups(1)[0]
-        with open(_file) as f:
-            text = f.read()
-        pw = re.search(PW_REGEX, text)
-        pb = re.search(PB_REGEX, text)
-        result = re.search(RESULT_REGEX, text)
-        if not pw or not pb or not result:
-            print("Fields not found: ", _file)
+    with db:
+        c = db.cursor()
+        for _file in tqdm(files):
+            match = re.match(EVAL_REGEX, os.path.basename(_file))
+            if not match:
+                print("Bad file: ", _file)
+                continue
+            timestamp = match.groups(1)[0]
+            with open(_file) as f:
+                text = f.read()
+            pw = re.search(PW_REGEX, text)
+            pb = re.search(PB_REGEX, text)
+            result = re.search(RESULT_REGEX, text)
+            if not pw or not pb or not result:
+                print("Fields not found: ", _file)
 
-        pw = pw.group(1)
-        pb = pb.group(1)
-        result = result.group(1)
+            pw = pw.group(1)
+            pb = pb.group(1)
+            result = result.group(1)
 
-        m_num_w = re.match(MODEL_REGEX, pw).group(1)
-        m_num_b = re.match(MODEL_REGEX, pb).group(1)
-
-        try:
-            # create models or ignore.
-            maybe_insert_model(db, fsdb.models_dir(), pb, m_num_b)
-            maybe_insert_model(db, fsdb.models_dir(), pw, m_num_w)
-
-            b_id = rowid_for(db, fsdb.models_dir(), pb)
-            w_id = rowid_for(db, fsdb.models_dir(), pw)
-
-            # insert into games or bail
-            game_id = None
-            try:
-                with db:
-                    c = db.cursor()
-                    c.execute(
-                    """ insert into games(timestamp, filename, b_id, w_id, black_won, result)
-                                    values(?, ?, ?, ?, ?, ?)
-                    """, [timestamp, _file, b_id, w_id, result.lower().startswith('b'), result])
-                    game_id = c.lastrowid
-            except sqlite3.IntegrityError:
-                #print("Duplicate game: {}".format(_file))
+            m_num_w = re.match(MODEL_REGEX, pw).group(1)
+            m_num_b = re.match(MODEL_REGEX, pb).group(1)
+            if m_num_w == '000588' or m_num_b == '000588':
                 continue
 
-            if game_id is None:
-                print("Somehow, game_id was None")
+
+
+            try:
+                # create models or ignore.
+                maybe_insert_model(db, bucket, pb, m_num_b)
+                maybe_insert_model(db, bucket, pw, m_num_w)
+
+                b_id = rowid_for(db, bucket, pb)
+                w_id = rowid_for(db, bucket, pw)
+
+                # insert into games or bail
+                game_id = None
+                try:
+                    with db:
+                        c = db.cursor()
+                        c.execute(
+                        """ insert into games(timestamp, filename, b_id, w_id, black_won, result)
+                                        values(?, ?, ?, ?, ?, ?)
+                        """, [timestamp, os.path.relpath(_file), b_id, w_id, result.lower().startswith('b'), result])
+                        game_id = c.lastrowid
+                except sqlite3.IntegrityError:
+                    #print("Duplicate game: {}".format(_file))
+                    continue
+
+                if game_id is None:
+                    print("Somehow, game_id was None")
 
             # update wins/game counts on model, and wins table.
-            with db:
-                c = db.cursor()
                 c.execute("update models set num_games = num_games + 1 where id in (?, ?)", [b_id, w_id])
                 if result.lower().startswith('b'):
                     c.execute("update models set black_games = black_games + 1, black_wins = black_wins + 1 where id = ?", (b_id,))
@@ -131,18 +139,20 @@ def import_files(files):
                     c.execute("update models set white_games = white_games + 1, white_wins = white_wins + 1 where id = ?", (w_id,))
                     c.execute("insert into wins(game_id, model_winner, model_loser) values(?, ?, ?)", 
                                 [game_id, w_id, b_id])
-                db.commit()
                 new_games += 1
+                if new_games % 1000 == 0:
+                    print("committing")
+                    db.commit()
 
-        except sqlite3.OperationalError:
-            print("Bailed!")
-            db.rollback()
-            raise
-        except:
-            print("Bailed!")
-            db.rollback()
-            raise
-    print("Added {} new games to database".format(new_games))
+            except sqlite3.OperationalError:
+                print("Bailed!")
+                db.rollback()
+                raise
+            except:
+                print("Bailed!")
+                db.rollback()
+                raise
+        print("Added {} new games to database".format(new_games))
 
 
 def compute_ratings(data=None):
@@ -223,8 +233,13 @@ def suggest_pairs(top_n=10, per_n=3):
 
     Returns a list of *model numbers*, not model ids.
     """
+    db = sqlite3.connect("ratings.db")
+    data = db.execute("select model_winner, model_loser from wins").fetchall()
+    bucket_ids = [id[0] for id in db.execute("select id from models where bucket = ?", (fsdb.models_dir(),)).fetchall()]
+    bucket_ids.sort()
+    data = [d for d in data if d[0] in bucket_ids and d[1] in bucket_ids]
 
-    ratings = [(model_num_for(k), v[0], v[1]) for k,v in compute_ratings().items()]
+    ratings = [(model_num_for(k), v[0], v[1]) for k,v in compute_ratings(data).items()]
     ratings.sort()
     ratings = ratings[70:] # filter off the first 100 models, which improve too fast.
 
@@ -241,10 +256,10 @@ def suggest_pairs(top_n=10, per_n=3):
     return res
 
 
-def sync(root):
+def sync(root, force_all=False):
     import subprocess
     last_ts = last_timestamp()
-    if last_ts:
+    if last_ts and not force_all:
         # Build a list of days from the day before our last timestamp to today
         num_days = (dt.datetime.utcnow() - dt.datetime.utcfromtimestamp(last_ts) + dt.timedelta(days=1)).days
         ds = [(dt.datetime.utcnow() - dt.timedelta(days=d)).strftime("%Y-%m-%d") for d in range(num_days+1)] 
@@ -264,14 +279,14 @@ def sync(root):
 
 
 def main():
-    root = os.path.abspath("sgf/eval")
-    sync(root)
+    root = os.path.abspath(os.path.join("sgf", fsdb.FLAGS.bucket_name, "sgf/eval"))
+    sync(root, True)
+    models = fsdb.get_models()
     r = compute_ratings()
     for v,k in sorted([(v,k) for k,v in r.items()])[-20:][::-1]: 
-        print (model_num_for(k),v)
+        print (models[model_num_for(k)][1],v)
     db = sqlite3.connect("ratings.db")
     print(db.execute("select count(*) from wins").fetchone()[0], "games")
-    models = fsdb.get_models()
     for m in models[-10:]:
         try:
             print(m[1], r[model_id(m[0])])
