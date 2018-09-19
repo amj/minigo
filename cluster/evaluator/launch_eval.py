@@ -28,7 +28,7 @@ import time
 from ratings import ratings
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=4):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job names
@@ -145,8 +145,9 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 28:
+            if len(r.items) < 40:
                 if len(desired_pairs) == 0:
+                    sys.exit()
                     root = os.path.abspath("sgf/tensor-go-minigo-v10-19/sgf/eval")
                     print("Out of pairs!  Syncing new eval games...")
                     ratings.sync(root)
@@ -165,11 +166,12 @@ def zoo_loop():
                     raise
                 save_pairs(sorted(desired_pairs))
                 save_last_model(last_model)
+                time.sleep(6)
 
             else:
                 print("{}\t{} jobs outstanding. ({} to be scheduled)".format(
                         time.strftime("%I:%M:%S %p"), len(r.items), len(desired_pairs)))
-            time.sleep(30)
+                time.sleep(60)
     except:
         print("Unfinished pairs:")
         print(sorted(desired_pairs))
