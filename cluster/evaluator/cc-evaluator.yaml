@@ -11,7 +11,7 @@ spec:
     spec:
       containers:
       - name: evaluator
-        image: gcr.io/$PROJECT/minigo-cc-evaluator:v10
+        image: gcr.io/$PROJECT/minigo-cc-evaluator:$EVAL_VERSION_TAG
         imagePullPolicy: Always
         resources:
           limits:

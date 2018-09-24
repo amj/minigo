@@ -86,18 +86,17 @@ def same_run_eval(black_num=0, white_num=0):
                     flags.FLAGS.bucket_name)
 
 
-def add_uncertain_pairs(dry_run=False):
-    new_pairs = ratings.suggest_pairs()
+def _append_pairs(new_pairs, dry_run):
     desired_pairs = restore_pairs() or []
     desired_pairs += new_pairs
-    print("added %d new pairs" % len(new_pairs))
-    print(set([p[0] for p in new_pairs]))
-    for p in new_pairs:
-        print(p)
+    print("Adding %d new pairs" % len(new_pairs))
     if not dry_run:
-        with open('pairlist.json', 'a') as f:
-            json.dump(new_pairs, f)
         save_pairs(desired_pairs)
+
+
+def add_uncertain_pairs(dry_run=False):
+    new_pairs = ratings.suggest_pairs()
+    _append_pairs(new_pairs, dry_run)
 
 
 def add_top_pairs(dry_run=False):
@@ -106,19 +105,10 @@ def add_top_pairs(dry_run=False):
     for idx, t in enumerate(top[:15]):
         new_pairs += [[t[0], o[0]] for o in top[idx+1:idx+5]]
     print(new_pairs)
-    desired_pairs = restore_pairs() or []
-    desired_pairs += new_pairs
-    print("added %d new pairs" % len(new_pairs))
-    print(set([p[0] for p in new_pairs]))
-    for p in new_pairs:
-        print(p)
-    if not dry_run:
-        with open('pairlist.json', 'a') as f:
-            json.dump(new_pairs, f)
-        save_pairs(desired_pairs)
+    _append_pairs(new_pairs, dry_run)
 
 
-def zoo_loop():
+def zoo_loop(sgf_dir, max_jobs=40):
     """Manages creating and cleaning up match jobs.
 
     - Load whatever pairs didn't get queued last time, and whatever our most
@@ -129,9 +119,15 @@ def zoo_loop():
           busy
         - As jobs finish, delete them from the cluster.
         - If we crash, write out the list of pairs we didn't manage to queue
+
+    sgf_dir -- the directory where sgf eval games should be used for computing
+      ratings.
+    max_jobs -- the maximum number of concurrent jobs.  jobs * completions * 2
+      should be around 500 to keep kubernetes from losing track of completions
     """
     desired_pairs = restore_pairs() or []
     last_model_queued = restore_last_model()
+    sgf_dir = os.path.abspath(sgf_dir)
 
     api_instance = get_api()
     try:
@@ -147,18 +143,19 @@ def zoo_loop():
 
             cleanup(api_instance)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < 40:
+            if len(r.items) < max_jobs:
                 if len(desired_pairs) == 0:
-                    sys.exit()
-                    root = os.path.abspath(
-                        "sgf/tensor-go-minigo-v10-19/sgf/eval")
-                    print("Out of pairs!  Syncing new eval games...")
-                    ratings.sync(root)
-                    print("Updating ratings and getting suggestions...")
-                    add_uncertain_pairs()
-                    desired_pairs = restore_pairs() or []
-                    print("Got {} new pairs".format(len(desired_pairs)))
-                    print(ratings.top_n())
+                    if sgf_dir:
+                        print("Out of pairs!  Syncing new eval games...")
+                        ratings.sync(sgf_dir)
+                        print("Updating ratings and getting suggestions...")
+                        add_uncertain_pairs()
+                        desired_pairs = restore_pairs() or []
+                        print("Got {} new pairs".format(len(desired_pairs)))
+                        print(ratings.top_n())
+                    else:
+                        time.sleep(300)
+                        continue
 
                 next_pair = desired_pairs.pop()  # take our pair off
                 print("Enqueuing:", next_pair)
@@ -235,9 +232,9 @@ def make_pairs_for_model(model_num=0):
         return
     pairs = []
     pairs += [[model_num, model_num - i]
-              for i in range(1, 5)if model_num - i > 0]
+              for i in range(1, 5) if model_num - i > 0]
     pairs += [[model_num, model_num - i]
-              for i in range(5, 71, 10)if model_num - i > 0]
+              for i in range(5, 71, 10) if model_num - i > 0]
     return pairs
 
 
