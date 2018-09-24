@@ -6,6 +6,7 @@ import dual_net
 import features as features_lib
 import go
 import sgf_wrapper
+from tqdm import tqdm
 
 # Only generate embeddings for these moves
 FIRST=20
