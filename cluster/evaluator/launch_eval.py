@@ -27,7 +27,7 @@ import time
 from ratings import ratings
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job
@@ -36,7 +36,7 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=3):
     completions: the number of completions desired
     """
     if not all([m1_path, m2_path, job_name, bucket_name]):
-        print("Provide all of m1_path, m2_path, job_name, and bucket_name"
+        print("Provide all of m1_path, m2_path, job_name, and bucket_name "
               "params")
         return
     api_instance = get_api()
@@ -99,6 +99,9 @@ def add_uncertain_pairs(dry_run=False):
 
 
 def add_top_pairs(dry_run=False):
+    """ Pairs up the top twenty models against each other.
+    #1 plays 2,3,4,5, #2 plays 3,4,5,6 etc. for a total of 15*4 matches.
+    """
     top = ratings.top_n(20)
     new_pairs = []
     for idx, t in enumerate(top[:15]):
@@ -107,7 +110,7 @@ def add_top_pairs(dry_run=False):
     _append_pairs(new_pairs, dry_run)
 
 
-def zoo_loop(sgf_dir, max_jobs=40):
+def zoo_loop(sgf_dir=None, max_jobs=40):
     """Manages creating and cleaning up match jobs.
 
     - Load whatever pairs didn't get queued last time, and whatever our most
@@ -126,7 +129,9 @@ def zoo_loop(sgf_dir, max_jobs=40):
     """
     desired_pairs = restore_pairs() or []
     last_model_queued = restore_last_model()
-    sgf_dir = os.path.abspath(sgf_dir)
+
+    if sgf_dir:
+        sgf_dir = os.path.abspath(sgf_dir)
 
     api_instance = get_api()
     try:
@@ -153,6 +158,7 @@ def zoo_loop(sgf_dir, max_jobs=40):
                         print("Got {} new pairs".format(len(desired_pairs)))
                         print(ratings.top_n())
                     else:
+                        print("Out of pairs!  Sleeping")
                         time.sleep(300)
                         continue
 
@@ -169,8 +175,8 @@ def zoo_loop(sgf_dir, max_jobs=40):
 
             else:
                 print("{}\t{} jobs outstanding. ({} to be scheduled)".format(
-                        time.strftime("%I:%M:%S %p"),
-                        len(r.items), len(desired_pairs)))
+                      time.strftime("%I:%M:%S %p"),
+                      len(r.items), len(desired_pairs)))
                 time.sleep(60)
     except:
         print("Unfinished pairs:")
