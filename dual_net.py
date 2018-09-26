@@ -19,12 +19,11 @@ move prediction and score estimation.
 """
 
 from absl import flags
-import argparse
 import functools
 import os.path
 import sys
 
-import argh
+import fire
 from tqdm import tqdm
 import numpy as np
 import tensorflow as tf
@@ -46,6 +45,12 @@ flags.DEFINE_integer('train_batch_size', 256,
 
 flags.DEFINE_integer('conv_width', 256 if go.N == 19 else 32,
                      'The width of each conv layer in the shared trunk.')
+
+flags.DEFINE_integer('policy_conv_width', 2,
+                     'The width of the policy conv layer.')
+
+flags.DEFINE_integer('value_conv_width', 1,
+                     'The width of the value conv layer.')
 
 flags.DEFINE_integer('fc_width', 256 if go.N == 19 else 64,
                      'The width of the fully connected layer in value head.')
@@ -78,6 +83,14 @@ flags.DEFINE_integer('shuffle_buffer_size', 2000,
 
 flags.DEFINE_bool('use_tpu', False, 'Whether to use TPU for training.')
 
+flags.DEFINE_bool('quantize', False,
+                  'Whether create a quantized model. When loading a model for '
+                  'inference, this must match how the model was trained.')
+
+flags.DEFINE_integer('quant_delay', 700 * 1024,
+                     'Number of training steps after which weights and '
+                     'activations are quantized.')
+
 flags.DEFINE_string(
     'tpu_name', None,
     'The Cloud TPU to use for training. This should be either the name used'
@@ -104,6 +117,13 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
     'summary_steps', default=256,
     help='Number of steps between logging summary scalars.')
+
+flags.DEFINE_integer(
+    'keep_checkpoint_max', default=5, help='Number of checkpoints to keep.')
+
+flags.DEFINE_bool(
+    'use_random_symmetry', True,
+    help='If true random symmetries be used when doing inference.')
 
 flags.register_multi_flags_validator(
     ['use_tpu', 'iterations_per_loop', 'summary_steps'],
@@ -149,20 +169,19 @@ class DualNetwork():
         without redifining the entire graph."""
         tf.train.Saver().restore(self.sess, save_file)
 
-    def run(self, position, use_random_symmetry=True):
-        probs, values = self.run_many([position],
-                                      use_random_symmetry=use_random_symmetry)
+    def run(self, position):
+        probs, values = self.run_many([position])
         return probs[0], values[0]
 
-    def run_many(self, positions, use_random_symmetry=True):
+    def run_many(self, positions):
         processed = list(map(features_lib.extract_features, positions))
-        if use_random_symmetry:
+        if FLAGS.use_random_symmetry:
             syms_used, processed = symmetries.randomize_symmetries_feat(
                 processed)
         outputs = self.sess.run(self.inference_output,
                                 feed_dict={self.inference_input: processed})
         probabilities, value = outputs['policy_output'], outputs['value_output']
-        if use_random_symmetry:
+        if FLAGS.use_random_symmetry:
             probabilities = symmetries.invert_symmetries_pi(
                 syms_used, probabilities)
         return probabilities, value
@@ -223,6 +242,15 @@ def model_fn(features, labels, mode, params=None):
     learning_rate = tf.train.piecewise_constant(
         global_step, FLAGS.lr_boundaries, FLAGS.lr_rates)
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+
+    # Insert quantization ops if requested
+    if FLAGS.quantize:
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            tf.contrib.quantize.create_training_graph(
+                quant_delay=FLAGS.quant_delay)
+        else:
+            tf.contrib.quantize.create_eval_graph()
+
     optimizer = tf.train.MomentumOptimizer(learning_rate, FLAGS.sgd_momentum)
     if FLAGS.use_tpu:
         optimizer = tpu_optimizer.CrossShardOptimizer(optimizer)
@@ -279,7 +307,8 @@ def model_fn(features, labels, mode, params=None):
         # Reset metrics occasionally so that they are mean of recent batches.
         reset_op = tf.variables_initializer(tf.local_variables("metrics"))
         cond_reset_op = tf.cond(
-            tf.equal(tf.mod(tf.reduce_min(step), FLAGS.summary_steps), tf.to_int64(1)),
+            tf.equal(tf.mod(tf.reduce_min(step),
+                            FLAGS.summary_steps), tf.to_int64(1)),
             lambda: reset_op,
             lambda: tf.no_op())
 
@@ -364,20 +393,22 @@ def model_inference_fn(features, training):
         shared_output = my_res_layer(shared_output)
 
     # policy head
-    policy_conv = my_conv2d(shared_output, filters=2, kernel_size=1)
+    policy_conv = my_conv2d(
+        shared_output, filters=FLAGS.policy_conv_width, kernel_size=1)
     policy_conv = tf.nn.relu(my_batchn(policy_conv, center=False, scale=False))
     logits = tf.layers.dense(
-        tf.reshape(policy_conv, [-1, 2 * go.N * go.N]),
+        tf.reshape(policy_conv, [-1, FLAGS.policy_conv_width * go.N * go.N]),
         go.N * go.N + 1)
 
     policy_output = tf.nn.softmax(logits, name='policy_output')
 
     # value head
-    value_conv = my_conv2d(shared_output, filters=1, kernel_size=1)
+    value_conv = my_conv2d(
+        shared_output, filters=FLAGS.value_conv_width, kernel_size=1)
     value_conv = tf.nn.relu(my_batchn(value_conv, center=False, scale=False))
 
     value_fc_hidden = tf.nn.relu(tf.layers.dense(
-        tf.reshape(value_conv, [-1, go.N * go.N]),
+        tf.reshape(value_conv, [-1, FLAGS.value_conv_width * go.N * go.N]),
         FLAGS.fc_width))
     value_output = tf.nn.tanh(
         tf.reshape(tf.layers.dense(value_fc_hidden, 1), [-1]),
@@ -390,7 +421,9 @@ def get_estimator(working_dir):
     if FLAGS.use_tpu:
         return get_tpu_estimator(working_dir)
 
-    run_config = tf.estimator.RunConfig(save_summary_steps=FLAGS.summary_steps)
+    run_config = tf.estimator.RunConfig(
+        save_summary_steps=FLAGS.summary_steps,
+        keep_checkpoint_max=FLAGS.keep_checkpoint_max)
     return tf.estimator.Estimator(
         model_fn,
         model_dir=working_dir,
@@ -408,6 +441,7 @@ def get_tpu_estimator(working_dir):
         model_dir=working_dir,
         save_checkpoints_steps=max(1000, FLAGS.iterations_per_loop),
         save_summary_steps=FLAGS.summary_steps,
+        keep_checkpoint_max=FLAGS.keep_checkpoint_max,
         session_config=tf.ConfigProto(
             allow_soft_placement=True, log_device_placement=True),
         tpu_config=tpu_config.TPUConfig(
@@ -581,11 +615,12 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
             self.before_weights = None
 
 
-parser = argparse.ArgumentParser()
-argh.add_commands(parser, [train, export_model, validate])
-
 if __name__ == '__main__':
     # Let absl.flags parse known flags from argv, then pass the remaining flags
-    # into argh for dispatching.
+    # into 'fire' for dispatching.
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)
-    argh.dispatch(parser, argv=remaining_argv[1:])
+    fire.Fire({
+        'train': train,
+        'export_model': export_model,
+        'validate': validate,
+    }, remaining_argv[1:])

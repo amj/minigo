@@ -26,7 +26,6 @@ bazel-bin/cc/main \
   --checkpoint-dir=${WORK_DIR}\
   --inject_noise=true \
   --soft_pick=true \
-  --random_symmetry=true \
   --virtual_losses=2 \
   --parallel_games=32 \
   --num_readouts=800 \
