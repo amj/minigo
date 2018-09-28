@@ -88,7 +88,7 @@ def same_run_eval(black_num=0, white_num=0):
 def _append_pairs(new_pairs, dry_run):
     desired_pairs = restore_pairs() or []
     desired_pairs += new_pairs
-    print("Adding %d new pairs" % len(new_pairs))
+    print("Adding {} new pairs, queue has {} pairs".format(len(new_pairs), len(desired_pairs)))
     if not dry_run:
         save_pairs(desired_pairs)
 
@@ -102,9 +102,9 @@ def add_top_pairs(dry_run=False):
     """ Pairs up the top twenty models against each other.
     #1 plays 2,3,4,5, #2 plays 3,4,5,6 etc. for a total of 15*4 matches.
     """
-    top = ratings.top_n(20)
+    top = ratings.top_n(10)
     new_pairs = []
-    for idx, t in enumerate(top[:15]):
+    for idx, t in enumerate(top[:5]):
         new_pairs += [[t[0], o[0]] for o in top[idx+1:idx+5]]
     print(new_pairs)
     _append_pairs(new_pairs, dry_run)
@@ -249,5 +249,6 @@ if __name__ == '__main__':
         'zoo_loop': zoo_loop,
         'same_run_eval': same_run_eval,
         'cleanup': cleanup,
+        'add_top_pairs': add_top_pairs,
         'launch_eval_job': launch_eval_job,
     }, remaining_argv[1:])

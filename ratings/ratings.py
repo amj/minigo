@@ -26,6 +26,7 @@ import os
 import re
 import fsdb
 import random
+import subprocess
 import math
 from tqdm import tqdm
 import datetime as dt
@@ -162,6 +163,8 @@ def import_files(files, bucket=None):
 def compute_ratings(data=None):
     """ Returns the tuples of (model_id, rating, sigma)
     N.B. that `model_id` here is NOT the model number in the run
+
+    'data' is tuples of (winner, loser) model_ids (not model numbers)
     """
     if data is None:
         with sqlite3.connect("ratings.db") as db:
@@ -203,8 +206,9 @@ def compute_ratings(data=None):
     return ratings
 
 
-def top_n(n=20):
-    r = compute_ratings()
+def top_n(n=10):
+    data = wins_subset(fsdb.models_dir())
+    r = compute_ratings(data)
     return [(model_num_for(k), v) for v, k in
             sorted([(v, k) for k, v in r.items()])[-n:][::-1]]
 
@@ -262,7 +266,6 @@ def suggest_pairs(top_n=10, per_n=3):
 
 
 def sync(root, force_all=False):
-    import subprocess
     last_ts = last_timestamp()
     if last_ts and not force_all:
         # Build a list of days from the day before our last timestamp to today
@@ -279,28 +282,33 @@ def sync(root, force_all=False):
 
         ingest_dirs(root, ds)
     else:
-        cmd = "gsutil -m rsync -r {0} {1}".format(fsdb.eval_dir(), root)
-        print(cmd)
-        subprocess.call(cmd.split())
+        cmd = ["gsutil", "-m", "rsync", "-r", fsdb.eval_dir(), root]
+        print(" ".join(cmd))
+        subprocess.call(cmd)
         dirs = os.listdir(root)
         ingest_dirs(root, dirs)
+
+def wins_subset(bucket):
+    with sqlite3.connect('ratings.db') as db:
+      data = db.execute("select model_winner, model_loser from wins join models where (model_winner=models.id or model_loser=models.id) and models.bucket=?", (bucket,)).fetchall()
+    return data
 
 
 def main():
     root = os.path.abspath(os.path.join("sgf", fsdb.FLAGS.bucket_name, "sgf/eval"))
     sync(root, True)
+    print("Finished sync.")
     models = fsdb.get_models()
-    r = compute_ratings()
+    data = wins_subset(fsdb.models_dir())
+    print(len(data))
+    r = compute_ratings(data)
     for v, k in sorted([(v, k) for k, v in r.items()])[-20:][::-1]:
         print(models[model_num_for(k)][1], v)
     db = sqlite3.connect("ratings.db")
     print(db.execute("select count(*) from wins").fetchone()[0], "games")
     for m in models[-10:]:
-        try:
-            print(m[1], r[model_id(m[0])])
-        except KeyError:
-            continue
-
+        m_id = model_id(m[0])
+        print(m[1], r.get(m_id, "model id not found({})".format(m_id)))
 
 if __name__ == '__main__':
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)

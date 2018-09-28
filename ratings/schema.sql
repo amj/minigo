@@ -31,7 +31,6 @@ CREATE TABLE IF NOT EXISTS models (
   white_wins integer,
   unique(bucket, model_name)
 );
-CREATE INDEX IF NOT EXISTS model_name_bucket_index ON models (model_name, bucket);
 
 CREATE TABLE IF NOT EXISTS wins (
     game_id primary key,
@@ -41,7 +40,6 @@ CREATE TABLE IF NOT EXISTS wins (
     foreign key(model_winner) references models(id),
     foreign key(model_loser) references models(id)
 );
-    
 
 CREATE TABLE IF NOT EXISTS games (
   /* ts-white-model-black-model-number */
@@ -60,7 +58,7 @@ CREATE TABLE IF NOT EXISTS games (
 );
 
 
+CREATE INDEX IF NOT EXISTS model_name_bucket_index ON models (model_name, bucket);
 CREATE INDEX IF NOT EXISTS game_model_b_index ON games (b_id);
 CREATE INDEX IF NOT EXISTS game_model_w_index ON games (w_id);
-
 CREATE INDEX IF NOT EXISTS game_filename on games (filename);
