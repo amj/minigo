@@ -22,12 +22,13 @@ import yaml
 import json
 import os
 import time
+import random
 from rl_loop import fsdb
 
 from ratings import ratings
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=4):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job
@@ -66,7 +67,7 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     return resp
 
 
-def same_run_eval(black_num=0, white_num=0):
+def same_run_eval(black_num=0, white_num=0, completions=4):
     """Shorthand to spawn a job matching up two models from the same run,
     identified by their model number """
     if black_num <= 0 or white_num <= 0:
@@ -82,7 +83,8 @@ def same_run_eval(black_num=0, white_num=0):
     launch_eval_job(b_model_path + ".pb",
                     w_model_path + ".pb",
                     "{:d}-{:d}".format(black_num, white_num),
-                    flags.FLAGS.bucket_name)
+                    flags.FLAGS.bucket_name,
+                    completions=completions)
 
 
 def _append_pairs(new_pairs, dry_run):
@@ -102,9 +104,9 @@ def add_top_pairs(dry_run=False):
     """ Pairs up the top twenty models against each other.
     #1 plays 2,3,4,5, #2 plays 3,4,5,6 etc. for a total of 15*4 matches.
     """
-    top = ratings.top_n(10)
+    top = ratings.top_n(15)
     new_pairs = []
-    for idx, t in enumerate(top[:5]):
+    for idx, t in enumerate(top[:10]):
         new_pairs += [[t[0], o[0]] for o in top[idx+1:idx+5]]
     print(new_pairs)
     _append_pairs(new_pairs, dry_run)
@@ -146,20 +148,26 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
                 save_last_model(last_model)
 
             cleanup(api_instance)
+            random.shuffle(desired_pairs)
             r = api_instance.list_job_for_all_namespaces()
             if len(r.items) < max_jobs:
                 if len(desired_pairs) == 0:
-                    if sgf_dir:
+                    if sgf_dir and len(r.items) < 15:
                         print("Out of pairs!  Syncing new eval games...")
                         ratings.sync(sgf_dir)
                         print("Updating ratings and getting suggestions...")
-                        add_uncertain_pairs()
+                        if last_model_queued % 3 == 0:
+                          print("Pairing the top of the table.")
+                          add_top_pairs()
+                        else:
+                          print("Pairing the most-unclear ratings.")
+                          add_uncertain_pairs()
+                        for modelnum, rate in ratings.top_n():
+                          print("{:>30}: {:0.3f} ({:0.3f})".format(modelnum, rate[0], rate[1]))
                         desired_pairs = restore_pairs() or []
-                        print("Got {} new pairs".format(len(desired_pairs)))
-                        print(ratings.top_n())
                     else:
-                        print("Out of pairs!  Sleeping")
-                        time.sleep(300)
+                        print("Out of pairs.  Sleeping ({} remain)".format(len(r.items)))
+                        time.sleep(150)
                         continue
 
                 next_pair = desired_pairs.pop()  # take our pair off
