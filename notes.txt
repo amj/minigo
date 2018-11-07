@@ -65,3 +65,29 @@ model 476: dropped-in 20x256 model trained via running start.  Learning rate to
 e3-4
 model 506: learning rate to 1e-5
 model 508: learning rate to 4e-5
+
+
+== v12
+chunk 567 and onwards: no moves after move #400
+857 onwards use 750k window size + pick3
+
+
+
+
+
+1. refactor ratings.py to use cloud sql (for all the `with db =` crap)
+2. use 'last timestamp' in table to do rsync (maybe i already did this?
+3. change zoo-loop pairlist and last_model to use cloudsql
+
+
+
+if you take the system that is combination of the topology with the motion
+across the topology
+for a large learning rate it makes sense taht that would be unstable
+for a small learning rate, it makes sense that you would find a stable minima
+and get stuck.
+
+suggests making data window larger as the LR drops.
+
+
+LR cut in half at v12-792

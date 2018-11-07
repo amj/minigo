@@ -96,7 +96,7 @@ def _append_pairs(new_pairs, dry_run):
 
 
 def add_uncertain_pairs(dry_run=False):
-    new_pairs = ratings.suggest_pairs()
+    new_pairs = ratings.suggest_pairs(ignore_before=50)
     _append_pairs(new_pairs, dry_run)
 
 
@@ -167,7 +167,7 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
                         desired_pairs = restore_pairs() or []
                     else:
                         print("Out of pairs.  Sleeping ({} remain)".format(len(r.items)))
-                        time.sleep(150)
+                        time.sleep(600)
                         continue
 
                 next_pair = desired_pairs.pop()  # take our pair off
