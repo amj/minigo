@@ -52,15 +52,12 @@ def train():
     new_model_num = model_num + 1
     new_model_name = shipname.generate(new_model_num)
     print("New model will be {}".format(new_model_name))
-    training_file = os.path.join(
-        fsdb.golden_chunk_dir(), str(new_model_num) + '.tfrecord.zz')
-    while not gfile.Exists(training_file):
-        print("Waiting for", training_file)
-        time.sleep(1 * 60)
     save_file = os.path.join(fsdb.models_dir(), new_model_name)
 
     cmd = ['python3', 'train.py', training_file,
            '--use_tpu',
+           '--use_bt',
+           '--steps_to_train=1024',
            '--tpu_name={}'.format(TPU_NAME),
            '--flagfile=rl_loop/distributed_flags',
            '--export_path={}'.format(save_file)]
