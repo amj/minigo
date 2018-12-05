@@ -16,6 +16,7 @@
 --lr_rates=0.0005
 --l2_strength=0.0001
 --sgd_momentum=0.95
+--steps_to_train=1024
 
 # Selfplay related flags.
 # These flags can be overwritten by --flags_path (see cc/main.cc for details)
