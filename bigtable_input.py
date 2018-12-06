@@ -361,7 +361,7 @@ def get_fresh_moves(n, fresh_fraction=0.05, minimum_fresh=18000):
     """Get a dataset of serialized TFExamples from the last N games.
 
     This top level wrapper returns the dataset of shuffled moves, using the
-    'require_fresh_games' function to block until enough new games has been
+    'require_fresh_games' function to block until enough new games have been
     played.  The number of fresh games required is the larger of:
        - The fraction of the total window size
        - The `minimum_fresh` parameter
