@@ -1,4 +1,5 @@
-# this file is the subset of flags used by the set of clusters that will do selfplay with resignation disabled.
+# this file is the subset of flags used by the set of clusters that will do
+# selfplay with resignation disabled (AKA 'calibration' games).
 #
 # Network architecture flags
 --conv_width=256
