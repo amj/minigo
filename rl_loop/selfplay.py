@@ -23,6 +23,8 @@ import mask_flags
 # From rl_loop/fsdb.py
 flags.declare_key_flag('bucket_name')
 
+# "_nr" signifies "No Resign", aka calibration game, which will use a different
+# set of flags and will not update its flags from a remote flagfile.
 flags.DEFINE_enum('mode', None, ['cc', 'tpu', 'tpu_nr'],
                   'Which setup to use: cc on GPU or cc/py on TPU.')
 
