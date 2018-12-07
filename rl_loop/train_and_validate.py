@@ -30,6 +30,7 @@ from rl_loop import fsdb
 import mask_flags
 from rl_loop import shipname
 import utils
+import dual_net
 
 flags.DEFINE_string('pro_dataset', None,
                     'Location of preprocessed pro dataset for validation')
@@ -45,6 +46,8 @@ try:
 except KeyError:
     raise Exception("Must have $TPU_NAME configured")
 
+FLAGS.tpu_name = TPU_NAME
+
 def train():
     model_num, model_name = fsdb.get_latest_model()
     print("Training on gathered game data, initializing from {}".format(
@@ -53,10 +56,14 @@ def train():
     new_model_name = shipname.generate(new_model_num)
     print("New model will be {}".format(new_model_name))
     save_file = os.path.join(fsdb.models_dir(), new_model_name)
+    #freeze_tpu requires the work_dir flag to be set
+    if not FLAGS.work_dir:
+        FLAGS.work_dir = fsdb.working_dir()
 
-    cmd = ['python3', 'train.py', training_file,
+    cmd = ['python3', 'train.py', '__unused_file__',
            '--use_tpu',
            '--use_bt',
+           '--work_dir={}'.format(fsdb.working_dir()),
            '--tpu_name={}'.format(TPU_NAME),
            '--flagfile=rl_loop/distributed_flags',
            '--export_path={}'.format(save_file)]
@@ -66,6 +73,7 @@ def train():
         print("Training failed!")
         return completed_process
 
+    # train.py already copies the {data,index,meta} files to $BUCKET/models
     # Persist the checkpoint two ways:
     # Freeze the .ckpt file in the work_dir for the TPU selfplayers
     # Freeze a non-tpu version of the graph for later GPU use.
@@ -112,7 +120,7 @@ def loop(unused_argv):
             continue
         with utils.timer("Validate"):
             validate_pro()
-            validate_holdout_selfplay()
+            #validate_holdout_selfplay()
 
 if __name__ == '__main__':
     flags.mark_flag_as_required('pro_dataset')
