@@ -73,7 +73,7 @@ def train():
         print("Training failed!")
         return completed_process
 
-    # train.py already copies the {data,index,meta} files to $BUCKET/models
+    # Train.py already copies the {data,index,meta} files to $BUCKET/models
     # Persist the checkpoint two ways:
     # Freeze the .ckpt file in the work_dir for the TPU selfplayers
     # Freeze a non-tpu version of the graph for later GPU use.
