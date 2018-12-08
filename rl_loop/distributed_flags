@@ -7,7 +7,7 @@
 # Network architecture flags
 --conv_width=256
 --fc_width=256
---trunk_layers=20
+--trunk_layers=19
 
 # Training-related flags
 --train_batch_size=256
