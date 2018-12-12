@@ -24,6 +24,7 @@ from absl import app, flags
 import numpy as np
 import tensorflow as tf
 
+import bigtable_input
 import dual_net
 import preprocessing
 import utils
