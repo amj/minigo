@@ -383,27 +383,28 @@ _games_nr = GameQueue(_project_name,
                       _instance_name,
                       _table_name + '-nr')
 
-def get_fresh_moves(n, fresh_fraction=0.025, minimum_fresh=18000):
-    """Get a dataset of serialized TFExamples from the last N games.
 
-    This top level wrapper returns the dataset of shuffled moves, using the
-    'require_fresh_games' function to block until enough new games have been
-    played.  The number of fresh games required is the larger of:
+def set_fresh_watermark(window_size, fresh_fraction=0.05, minimum_fresh=20000):
+    """Sets the metadata cell used to block until some quantity of games have been played.
+
+    This sets the 'high water mark' on the _games queue, used to block training
+    until enough new games have been played.  The number of fresh games required
+    is the larger of:
        - The fraction of the total window size
        - The `minimum_fresh` parameter
     Args:
-      n:  an integer indicating how many past games should be sourced.
+      window_size:  an integer indicating how many past games are considered
+      fresh_fraction: a float in (0,1] indicating the fraction of games to wait for
       minimum_fresh:  an integer indicating the lower bound on the number of new
       games.
     """
     latest_game = int(_games.latest_game_number())
     if n > latest_game: # How to handle the case when the window is not yet 'full'
-        _games.require_fresh_games(minimum_fresh)
+        _games.require_fresh_games(int(minimum_fresh * .9))
     else:
         _games.require_fresh_games(
                 math.ceil(n * .9 * fresh_fraction))
 
-    return get_unparsed_moves_from_last_n_games(n)
 
 def get_unparsed_moves_from_last_n_games(n,
                                          moves=2**21,

@@ -36,6 +36,9 @@ flags.DEFINE_integer('steps_to_train', None,
                      'Number of training steps to take. If not set, iterates '
                      'once over training data.')
 
+flags.DEFINE_integer('window_size', 500000,
+                     'Number of games to include in the window')
+
 flags.DEFINE_string('export_path', None,
                     'Where to export the model after training.')
 
@@ -124,6 +127,7 @@ def train(*tf_records: "Records to train on"):
             def _input_fn(params):
                 return preprocessing.get_tpu_bt_input_tensors(
                     params['batch_size'],
+                    number_of_games=FLAGS.window_size,
                     random_rotation=True)
         else:
             def _input_fn(params):
@@ -150,6 +154,10 @@ def train(*tf_records: "Records to train on"):
                  steps or '?', effective_batch_size,
                  (steps * effective_batch_size) if steps else '?')
     estimator.train(_input_fn, steps=steps, hooks=hooks)
+
+    if FLAGS.use_bt:
+        bigtable_input.set_fresh_watermark(FLAGS.window_size)
+
 
 
 def main(argv):
