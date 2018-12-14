@@ -54,15 +54,14 @@ flags.register_multi_flags_validator(
     '`use_bt` flag only valid with `use_tpu` as well')
 
 @flags.multi_flags_validator(
-        ['use_bt', 'cbt_project', 'cbt_instance', 'cbt_table'],
-        message= 'Cloud Bigtable configuration flags not correct')
+    ['use_bt', 'cbt_project', 'cbt_instance', 'cbt_table'],
+    message='Cloud Bigtable configuration flags not correct')
 def _bt_checker(flags_dict):
     if not flags_dict['use_bt']:
         return True
-    else:
-        return (flags_dict['cbt_project']
-                and flags_dict['cbt_instance']
-                and flags_dict['cbt_table']) 
+    return (flags_dict['cbt_project']
+            and flags_dict['cbt_instance']
+            and flags_dict['cbt_table'])
 
 
 # From dual_net.py
@@ -141,13 +140,13 @@ def train(*tf_records: "Records to train on"):
     if FLAGS.use_tpu:
         effective_batch_size *= FLAGS.num_tpu_cores
 
+    if FLAGS.use_bt:
+        games = bigtable_input.GameQueue(
+            FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table)
+        games_nr = bigtable_input.GameQueue(
+            FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table + '-nr')
     if FLAGS.use_tpu:
         if FLAGS.use_bt:
-            games = bigtable_input.GameQueue(
-                    FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table)
-            games_nr = bigtable_input.GameQueue(
-                    FLAGS.cbt_project, FLAGS.cbt_instance,
-                    FLAGS.cbt_table + '-nr')
             def _input_fn(params):
                 return preprocessing.get_tpu_bt_input_tensors(
                     games,
@@ -182,7 +181,7 @@ def train(*tf_records: "Records to train on"):
     estimator.train(_input_fn, steps=steps, hooks=hooks)
 
     if FLAGS.use_bt:
-        bigtable_input.set_fresh_watermark(FLAGS.window_size)
+        bigtable_input.set_fresh_watermark(games, FLAGS.window_size)
 
 
 
