@@ -298,23 +298,18 @@ void MctsNode::IncorporateResults(absl::Span<const float> move_probabilities,
   }
 
   SetFlag(Flag::kExpanded);
+  // Initialize the edges under the selected leaf.
   for (int i = 0; i < kNumMoves; ++i) {
     // Zero out illegal moves, and re-normalize move_probabilities.
     float move_prob =
         legal_moves[i] ? policy_scalar * move_probabilities[i] : 0;
 
     edges[i].original_P = edges[i].P = move_prob;
-    // Initialize child Q as current node's value, to prevent dynamics where
-    // if B is winning, then B will only ever explore 1 move, because the Q
-    // estimation will be so much larger than the 0 of the other moves.
-    //
-    // Conversely, if W is winning, then B will explore all 362 moves before
-    // continuing to explore the most favorable move. This is a waste of
-    // search.
-    //
-    // The value seeded here acts as a prior, and gets averaged into Q
-    // calculations.
-    edges[i].W += value;
+    // Initialize child Q to the parent Q.
+    // edges[i].W += value;
+
+    // Initialize Child Q to a 'loss' at this move.
+    edges[i].W = position.to_play() == Color::kBlack ? -1 : 1;
   }
   BackupValue(value, up_to);
 }
@@ -410,8 +405,8 @@ std::string MctsNode::CalculateTreeStats() const {
   long depth_sum = 0;
   long depth_max = 0;
 
-  std::function<void(const MctsNode&, int)> traverse =
-      [&](const MctsNode& node, int depth) {
+  std::function<void(const MctsNode&, int)> traverse = [&](const MctsNode& node,
+                                                           int depth) {
     num_nodes += 1;
     num_leaf_nodes += node.N() <= 1;
 
