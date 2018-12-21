@@ -37,7 +37,7 @@ import rl_loop.fsdb as fsdb
 FLAGS = flags.FLAGS
 RESIGN_FLAG_REGEX = re.compile(r'--resign_threshold=([-\d.]+)')
 
-def get_95_percentile_bleak(n_back=500):
+def get_95_percentile_bleak(games_nr, n_back=500):
     """Gets the 95th percentile of bleakest_eval from bigtable"""
     end_game = int(bigtable_input._games_nr.latest_game_number())
     start_game = end_game - n_back if end_game >= n_back else 0
@@ -70,11 +70,11 @@ def main(argv):
     if len(argv) > 1:
         raise app.UsageError('Too many command-line arguments.')
 
-    if not 'CBT_TABLE' in os.environ:
-        raise app.UsageError('CBT_TABLE not set')
+    games_nr = bigtable_input.GameQueue(
+        FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table + '-nr')
 
     while True:
-        new_pct = get_95_percentile_bleak()
+        new_pct = get_95_percentile_bleak(games_nr)
         update_flagfile(fsdb.flags_path(), new_pct)
         time.sleep(60 * 3)
 
