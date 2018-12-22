@@ -14,11 +14,12 @@
 
 """Updates a flagfile containing a resign threshold flag
 
-Reads the bigtables defined by env vars in PROJECT,CBT_INSTANCE,CBT_TABLE to
-compute the 95 percentile of the bleakest-evaluations found in calibration games,
-then updates the flagfile on the default bucket path, resetting that value.
+Reads the bigtables defined by the flags --cbt_{project, instance, table} to
+compute the 95 percentile of the bleakest-evaluations found in calibration
+games, then updates the flagfile on the default bucket path, resetting that
+value.
 
-Recommended usage is with the common flagfile (e.g. rl_loop/distributed_flags)
+Recommended usage is via common flagfile (e.g. rl_loop/distributed_flags)
 """
 
 import sys
