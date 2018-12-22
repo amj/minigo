@@ -177,13 +177,17 @@ def train(*tf_records: "Records to train on"):
     logging.info("Training, steps = %s, batch = %s -> %s examples",
                  steps or '?', effective_batch_size,
                  (steps * effective_batch_size) if steps else '?')
-    estimator.train(_input_fn, steps=steps, hooks=hooks)
 
     if FLAGS.use_bt:
         games = bigtable_input.GameQueue(
             FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table)
         bigtable_input.set_fresh_watermark(games, FLAGS.window_size)
 
+    try:
+        estimator.train(_input_fn, steps=steps, hooks=hooks)
+    except:
+        if FLAGS.use_bt:
+            games.require_fresh_games(0)
 
 
 def main(argv):

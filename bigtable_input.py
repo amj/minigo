@@ -334,6 +334,23 @@ class GameQueue:
         until `table_state=metadata:game_counter is at least the value
         in that cell.
         """
+        wait_until_game = self.read_wait_cell()
+        if not wait_until_game:
+            return
+        latest_game = self.latest_game_number
+        while latest_game < wait_until_game:
+            utils.dbg('Latest game {} not yet at required game {}'.
+                      format(latest_game, wait_until_game))
+            time.sleep(poll_interval)
+            latest_game = self.latest_game_number
+
+    def read_wait_cell(self):
+        """Read the value of the cell holding the 'wait' value,
+
+        Returns the int value of whatever it has, or None if the cell doesn't
+        exist.
+        """
+
         table_state = self.bt_table.read_row(
             TABLE_STATE,
             filter_=row_filters.ColumnRangeFilter(
@@ -341,20 +358,14 @@ class GameQueue:
         if table_state is None:
             utils.dbg('No waiting for new games needed; '
                       'wait_for_game_number column not in table_state')
-            return
+            return None
         value = table_state.cell_value(METADATA, WAIT_CELL)
         if not value:
             utils.dbg('No waiting for new games needed; '
                       'no value in wait_for_game_number cell '
                       'in table_state')
-            return
-        wait_until_game = cbt_intvalue(value)
-        latest_game = self.latest_game_number
-        while latest_game < wait_until_game:
-            utils.dbg('Latest game {} not yet at required game {}'.
-                      format(latest_game, wait_until_game))
-            time.sleep(poll_interval)
-            latest_game = self.latest_game_number
+            return None
+        return cbt_intvalue(value)
 
     def count_moves_in_game_range(self, game_begin, game_end):
         """Count the total moves in a game range.
