@@ -95,7 +95,7 @@ def freeze(save_path, rewrite_tpu=False):
            '--work_dir={}'.format(fsdb.working_dir()),
            '--model_path={}'.format(save_path)]
 
-    if use_tpu:
+    if rewrite_tpu:
         cmd.extend(['--use_tpu',
                     '--tpu_name={}'.format(TPU_NAME)])
 

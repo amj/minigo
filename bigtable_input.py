@@ -504,7 +504,7 @@ def set_fresh_watermark(games, window_size, fresh_fraction=0.05, minimum_fresh=2
         games.require_fresh_games(int(minimum_fresh * .9))
     else:
         games.require_fresh_games(
-                math.ceil(n * .9 * fresh_fraction))
+                math.ceil(window_size * .9 * fresh_fraction))
 
 
 def get_unparsed_moves_from_last_n_games(games, games_nr, n,
