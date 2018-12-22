@@ -46,10 +46,6 @@ flags.DEFINE_string('cbt_instance', None,
 flags.DEFINE_string('cbt_table', None,
                     'The table within the cloud bigtable instance to use')
 
-flags.mark_flag_as_required('cbt_project')
-flags.mark_flag_as_required('cbt_instance')
-flags.mark_flag_as_required('cbt_table')
-
 FLAGS = flags.FLAGS
 
 
