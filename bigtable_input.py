@@ -338,8 +338,8 @@ class GameQueue:
         if not wait_until_game:
             return
         latest_game = self.latest_game_number
+        last_latest = latest_game
         while latest_game < wait_until_game:
-            last_latest = latest_game
             utils.dbg('Latest game {} not yet at required game {} '
                       '(+{}, {:0.3f} games/sec)'.format(
                               latest_game,
@@ -348,6 +348,7 @@ class GameQueue:
                               (latest_game - last_latest) / poll_interval
                       ))
             time.sleep(poll_interval)
+            last_latest = latest_game
             latest_game = self.latest_game_number
 
     def read_wait_cell(self):
