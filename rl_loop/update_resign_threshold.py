@@ -69,7 +69,7 @@ def update_flagfile(flags_path, new_threshold):
     old_threshold = RESIGN_FLAG_REGEX.search(lines).groups(1)
     lines = re.sub(RESIGN_FLAG_REGEX, "--resign_threshold={:.3f}".format(new_threshold), lines)
 
-    if abs(float(old_threshold[0]) - new_threshold) < 0.01:
+    if abs(float(old_threshold[0]) - new_threshold) < 0.001:
         print("Not updating percentiles; {} ~= {:.3f}".format(
                 old_threshold[0], new_threshold), flush=True)
     else:
