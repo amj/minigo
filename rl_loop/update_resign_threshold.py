@@ -22,6 +22,7 @@ value.
 Recommended usage is via common flagfile (e.g. rl_loop/distributed_flags)
 """
 
+
 import sys
 import re
 import os
@@ -68,9 +69,14 @@ def update_flagfile(flags_path, new_threshold):
     old_threshold = RESIGN_FLAG_REGEX.search(lines).groups(1)
     lines = re.sub(RESIGN_FLAG_REGEX, "--resign_threshold={:.3f}".format(new_threshold), lines)
 
-    print("Updated percentile from {} to {:.3f}".format(old_threshold, new_threshold))
-    with tf.gfile.GFile(flags_path, 'w') as f:
-        f.write(lines)
+    if abs(float(old_threshold[0]) - new_threshold) < 0.01:
+        print("Not updating percentiles; {} ~= {:.3f}".format(
+                old_threshold[0], new_threshold), flush=True)
+    else:
+        print("Updated percentile from {} to {:.3f}".format(
+                old_threshold[0], new_threshold), flush=True)
+        with tf.gfile.GFile(flags_path, 'w') as f:
+            f.write(lines)
 
 
 def main(argv):
@@ -90,5 +96,5 @@ if __name__ == '__main__':
     valid_flags += ['--helpshort', '--helpfull', '--help']
     parsed_flags = flags.FlagValues().read_flags_from_files(sys.argv[1:])
     filtered_flags = mask_flags.filter_flags(parsed_flags, valid_flags)
-    print(filtered_flags)
+    print(filtered_flags, flush=True)
     app.run(main, argv=sys.argv[:1] + filtered_flags)
