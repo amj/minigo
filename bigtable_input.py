@@ -485,26 +485,25 @@ class GameQueue:
                 print('  games/sec:', len(h)/elapsed)
 
 
-def set_fresh_watermark(games, window_size, fresh_fraction=0.05, minimum_fresh=20000):
+def set_fresh_watermark(game_queue, latest_game, window_size, fresh_fraction=0.05, minimum_fresh=20000):
     """Sets the metadata cell used to block until some quantity of games have been played.
 
-    This sets the 'high water mark' on the `games` queue, used to block training
+    This sets the 'high water mark' on the `game_queue`, used to block training
     until enough new games have been played.  The number of fresh games required
     is the larger of:
        - The fraction of the total window size
        - The `minimum_fresh` parameter
     Args:
-      games: A GameQueue object, on whose backing table will be modified.
+      game_queue: A GameQueue object, on whose backing table will be modified.
       window_size:  an integer indicating how many past games are considered
       fresh_fraction: a float in (0,1] indicating the fraction of games to wait for
       minimum_fresh:  an integer indicating the lower bound on the number of new
       games.
     """
-    latest_game = games.latest_game_number
     if window_size > latest_game: # How to handle the case when the window is not yet 'full'
-        games.require_fresh_games(int(minimum_fresh * .9))
+        game_queue.require_fresh_games(int(minimum_fresh * .9))
     else:
-        games.require_fresh_games(
+        game_queue.require_fresh_games(
                 math.ceil(window_size * .9 * fresh_fraction))
 
 

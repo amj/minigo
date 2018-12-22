@@ -181,10 +181,12 @@ def train(*tf_records: "Records to train on"):
     if FLAGS.use_bt:
         games = bigtable_input.GameQueue(
             FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table)
-        bigtable_input.set_fresh_watermark(games, FLAGS.window_size)
+        latest_game = games.latest_game_number
 
     try:
         estimator.train(_input_fn, steps=steps, hooks=hooks)
+        bigtable_input.set_fresh_watermark(games, latest_game,
+                                           FLAGS.window_size)
     except:
         if FLAGS.use_bt:
             games.require_fresh_games(0)
