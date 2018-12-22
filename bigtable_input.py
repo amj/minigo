@@ -339,8 +339,14 @@ class GameQueue:
             return
         latest_game = self.latest_game_number
         while latest_game < wait_until_game:
-            utils.dbg('Latest game {} not yet at required game {}'.
-                      format(latest_game, wait_until_game))
+            last_latest = latest_game
+            utils.dbg('Latest game {} not yet at required game {} '
+                      '(+{}, {:0.3f} games/sec)'.format(
+                              latest_game,
+                              wait_until_game,
+                              latest_game - last_latest,
+                              (latest_game - last_latest) / poll_interval
+                      ))
             time.sleep(poll_interval)
             latest_game = self.latest_game_number
 
