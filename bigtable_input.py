@@ -36,15 +36,19 @@ from absl import flags
 flags.DEFINE_string('cbt_project', None,
                     'The project used to connect to the cloud bigtable ')
 
-# CBT_INSTANCE:  identifier of Cloud Bigtable instance in PROJECT.
+# cbt_instance:  identifier of Cloud Bigtable instance in cbt_project.
 flags.DEFINE_string('cbt_instance', None,
                     'The identifier of the cloud bigtable instance in cbt_project')
 
-# CBT_TABLE:  identifier of Cloud Bigtable table in CBT_INSTANCE.
-# The CBT_TABLE is expected to be accompanied by one with an "-nr"
+# cbt_table:  identifier of Cloud Bigtable table in cbt_instance.
+# The cbt_table is expected to be accompanied by one with an "-nr"
 # suffix, for "no-resign".
 flags.DEFINE_string('cbt_table', None,
                     'The table within the cloud bigtable instance to use')
+
+flags.mark_flag_as_required('cbt_project')
+flags.mark_flag_as_required('cbt_instance')
+flags.mark_flag_as_required('cbt_table')
 
 FLAGS = flags.FLAGS
 

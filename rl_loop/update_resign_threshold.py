@@ -16,7 +16,9 @@
 
 Reads the bigtables defined by env vars in PROJECT,CBT_INSTANCE,CBT_TABLE to
 compute the 95 percentile of the bleakest-evaluations found in calibration games,
-then updates the flagfile on the default bucket path, resetting that value
+then updates the flagfile on the default bucket path, resetting that value.
+
+Recommended usage is with the common flagfile (e.g. rl_loop/distributed_flags)
 """
 
 import sys
@@ -30,18 +32,22 @@ import tensorflow as tf
 
 sys.path.insert(0, '.')
 
+import mask_flags
 import bigtable_input
 import rl_loop.fsdb as fsdb
 
+# Fun fact, this only helps for --helpshort.  It's not a validator.
+flags.adopt_module_key_flags(bigtable_input)
+flags.adopt_module_key_flags(fsdb)
 
 FLAGS = flags.FLAGS
 RESIGN_FLAG_REGEX = re.compile(r'--resign_threshold=([-\d.]+)')
 
 def get_95_percentile_bleak(games_nr, n_back=500):
     """Gets the 95th percentile of bleakest_eval from bigtable"""
-    end_game = int(bigtable_input._games_nr.latest_game_number())
+    end_game = int(games_nr.latest_game_number)
     start_game = end_game - n_back if end_game >= n_back else 0
-    moves = bigtable_input._games_nr.bleakest_moves(start_game, end_game)
+    moves = games_nr.bleakest_moves(start_game, end_game)
     evals = np.array([m[2] for m in moves])
     return np.percentile(evals, 5)
 
@@ -79,4 +85,9 @@ def main(argv):
         time.sleep(60 * 3)
 
 if __name__ == '__main__':
-    app.run(main)
+    valid_flags = list(map(lambda f: '--' + f, FLAGS.flag_values_dict().keys()))
+    valid_flags += ['--helpshort', '--helpfull', '--help']
+    parsed_flags = flags.FlagValues().read_flags_from_files(sys.argv[1:])
+    filtered_flags = mask_flags.filter_flags(parsed_flags, valid_flags)
+    print(filtered_flags)
+    app.run(main, argv=sys.argv[:1] + filtered_flags)
