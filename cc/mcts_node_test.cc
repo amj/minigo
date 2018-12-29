@@ -60,7 +60,8 @@ TEST(MctsNodeTest, UpperConfidenceBound) {
   EXPECT_NEAR(puct_policy * std::sqrt(1) / (1 + 0), root.child_U(0), epsilon);
 
   leaf = root.SelectLeaf();
-  leaf->IncorporateResults(probs, 0.5, &root);
+  // Make this node a loss to match init-to-loss behavior
+  leaf->IncorporateResults(probs, -1, &root);
   EXPECT_NE(&root, leaf);
   EXPECT_EQ(&root, leaf->parent);
   EXPECT_EQ(Coord(0), leaf->move);
@@ -149,10 +150,10 @@ TEST(MctsNodeTest, BackupIncorporateResults) {
   // Leaf should have one visit
   EXPECT_EQ(1, root.child_N(leaf->move));
   EXPECT_EQ(1, leaf->N());
-  // And that leaf's value had its parent's Q (0) as a prior, so the Q
-  // should now be the average of 0, -1
-  EXPECT_FLOAT_EQ(-0.5, root.child_Q(leaf->move));
-  EXPECT_FLOAT_EQ(-0.5, leaf->Q());
+  // And that leaf's value had a loss (1) as a prior, so the Q
+  // should now be the average of 1, -1
+  EXPECT_FLOAT_EQ(0.0, root.child_Q(leaf->move));
+  EXPECT_FLOAT_EQ(0.0, leaf->Q());
 
   // We're assuming that SelectLeaf() returns a leaf like:
   //   root
@@ -172,9 +173,9 @@ TEST(MctsNodeTest, BackupIncorporateResults) {
 
   EXPECT_EQ(2, leaf->N());
   EXPECT_EQ(1, leaf2->N());
-  // average of 0, -1, -0.2
+  // average of 1, -1, -0.2
   EXPECT_FLOAT_EQ(root.child_Q(leaf->move), leaf->Q());
-  EXPECT_FLOAT_EQ(-0.4, leaf->Q());
+  EXPECT_FLOAT_EQ((-0.2 / 3), leaf->Q());
   // average of -1, -0.2
   EXPECT_FLOAT_EQ(-0.6, leaf->child_Q(leaf2->move));
   EXPECT_FLOAT_EQ(-0.6, leaf2->Q());
