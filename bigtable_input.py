@@ -322,6 +322,7 @@ class GameQueue:
         table_state = self.bt_table.row(TABLE_STATE)
         table_state.set_cell(METADATA, WAIT_CELL, int(latest + number_fresh))
         table_state.commit()
+        print("== Setting wait cell to ", int(latest + number_fresh), flush=True)
 
     def wait_for_fresh_games(self, poll_interval=15.0):
         """Block caller until required new games have been played.
@@ -502,10 +503,12 @@ def set_fresh_watermark(game_queue, count_from, window_size, fresh_fraction=0.05
       games.
     """
     already_played = game_queue.latest_game_number - count_from
+    print("== already_played: ", already_played, flush=True)
     if window_size > count_from: # How to handle the case when the window is not yet 'full'
         game_queue.require_fresh_games(int(minimum_fresh * .9))
     else:
         num_to_play = max(0, math.ceil(window_size * .9 * fresh_fraction) - already_played)
+        print("== Num to play: ", num_to_play, flush=True)
         game_queue.require_fresh_games(num_to_play)
 
 
