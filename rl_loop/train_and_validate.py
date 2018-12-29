@@ -132,7 +132,7 @@ def validate_pro():
 
 def loop(unused_argv):
     while True:
-        print("=" * 40)
+        print("=" * 40, flush=True)
         with utils.timer("Train"):
             completed_process = train()
         if completed_process.returncode > 0:

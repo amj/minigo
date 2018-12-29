@@ -19,19 +19,20 @@ import bisect
 import collections
 import datetime
 import math
+import multiprocessing
 import operator
-import os
 import re
 import struct
 import time
 import numpy as np
 from google.cloud import bigtable
-from google.cloud.bigtable import row_filters
-from google.cloud.bigtable import column_family
+from google.cloud.bigtable import row_filters as bigtable_row_filters
+from google.cloud.bigtable import column_family as bigtable_column_family
 import tensorflow as tf
-import utils
 
 from absl import flags
+import utils
+
 
 flags.DEFINE_string('cbt_project', None,
                     'The project used to connect to the cloud bigtable ')
@@ -53,6 +54,13 @@ FLAGS = flags.FLAGS
 
 ROW_PREFIX = 'g_{:0>10}_'
 ROWCOUNT_PREFIX = 'ct_{:0>10}_'
+
+# Maximum number of concurrent processes to use when issuing requests against
+# Bigtable.  Value taken from default in the load-testing tool described here:
+#
+# https://github.com/googleapis/google-cloud-go/blob/master/bigtable/cmd/loadtest/loadtest.go
+
+MAX_BT_CONCURRENCY = 100
 
 ## Column family and qualifier constants.
 
@@ -76,6 +84,12 @@ _game_row_key = re.compile(r'g_(\d+)_m_(\d+)')
 _game_from_counter = re.compile(r'ct_(\d+)_')
 
 
+# The string information needed to construct a client of a Bigtable table.
+BigtableSpec = collections.namedtuple(
+    'BigtableSpec',
+    ['project', 'instance', 'table'])
+
+
 def cbt_intvalue(value):
     """Decode a big-endian uint64.
 
@@ -90,6 +104,11 @@ def cbt_intvalue(value):
 def make_single_array(ds, batch_size=8*1024):
     """Create a single numpy array from a dataset.
 
+    The dataset must have only one dimension, that is,
+    the length of its `output_shapes` and `output_types`
+    is 1, and its output shape must be `[]`, that is,
+    every tensor in the dataset must be a scalar.
+
     Args:
       ds:  a TF Dataset.
       batch_size:  how many elements to read per pass
@@ -97,6 +116,11 @@ def make_single_array(ds, batch_size=8*1024):
     Returns:
       a single numpy array.
     """
+    if isinstance(ds.output_types, tuple) or isinstance(ds.output_shapes, tuple):
+        raise ValueError('Dataset must have a single type and shape')
+    nshapes = len(ds.output_shapes)
+    if nshapes > 0:
+        raise ValueError('Dataset must be comprised of scalars (TensorShape=[])')
     batches = []
     with tf.Session() as sess:
         ds = ds.batch(batch_size)
@@ -108,7 +132,9 @@ def make_single_array(ds, batch_size=8*1024):
                 batches.append(sess.run(get_next))
         except tf.errors.OutOfRangeError:
             pass
-    return np.concatenate(batches)
+    if batches:
+        return np.concatenate(batches)
+    return np.array([], dtype=ds.output_types.as_numpy_dtype)
 
 
 def _histogram_move_keys_by_game(sess, ds, batch_size=8*1024):
@@ -156,6 +182,27 @@ def _game_keys_as_array(ds):
     return make_single_array(ds)
 
 
+def _delete_rows(args):
+    """Delete the given row keys from the given Bigtable.
+
+    The args are (BigtableSpec, row_keys), but are passed
+    as a single argument in order to work with
+    multiprocessing.Pool.map.  This is also the reason why this is a
+    top-level function instead of a method.
+
+    """
+    btspec, row_keys = args
+    bt_table = bigtable.Client(btspec.project).instance(
+        btspec.instance).table(btspec.table)
+    utils.dbg('...deleting range %s..%s' % (
+        row_keys[0], row_keys[-1]))
+    rows = [bt_table.row(k) for k in row_keys]
+    for r in rows:
+        r.delete()
+    bt_table.mutate_rows(rows)
+    return row_keys
+
+
 class GameQueue:
     """Queue of games stored in a Cloud Bigtable.
 
@@ -171,17 +218,13 @@ class GameQueue:
           instance_name:  string name of CBT instance in project.
           table_name:  string name of CBT table in instance.
         """
-        self.project_name = project_name,
-        self.instance_name = instance_name
-        self.table_name = table_name
+        self.btspec = BigtableSpec(project_name, instance_name, table_name)
         self.bt_table = bigtable.Client(
-            project_name, admin=True).instance(
-                instance_name).table(
-                    table_name)
+            self.btspec.project, admin=True).instance(
+                self.btspec.instance).table(self.btspec.table)
         self.tf_table = tf.contrib.cloud.BigtableClient(
-            project_name,
-            instance_name).table(
-                table_name)
+            self.btspec.project,
+            self.btspec.instance).table(self.btspec.table)
 
     def create(self):
         """Create the table underlying the queue.
@@ -193,7 +236,7 @@ class GameQueue:
             utils.dbg('Table already exists')
             return
 
-        max_versions_rule = column_family.MaxVersionsGCRule(1)
+        max_versions_rule = bigtable_column_family.MaxVersionsGCRule(1)
         self.bt_table.create(column_families={
             METADATA: max_versions_rule,
             TFEXAMPLE: max_versions_rule})
@@ -203,7 +246,7 @@ class GameQueue:
         """Return the number of the next game to be written."""
         table_state = self.bt_table.read_row(
             TABLE_STATE,
-            filter_=row_filters.ColumnRangeFilter(
+            filter_=bigtable_row_filters.ColumnRangeFilter(
                 METADATA, GAME_COUNTER, GAME_COUNTER))
         if table_state is None:
             return 0
@@ -230,7 +273,7 @@ class GameQueue:
         rows = self.bt_table.read_rows(
             ROWCOUNT_PREFIX.format(start_game),
             ROWCOUNT_PREFIX.format(end_game),
-            filter_=row_filters.ColumnRangeFilter(
+            filter_=bigtable_row_filters.ColumnRangeFilter(
                 METADATA, move_count, move_count))
         def parse(r):
             rk = str(r.row_key, 'utf-8')
@@ -239,28 +282,42 @@ class GameQueue:
         return sorted([parse(r) for r in rows], key=operator.itemgetter(0))
 
     def delete_row_range(self, format_str, start_game, end_game):
+        """Delete rows related to the given game range.
+
+        Args:
+          format_str:  a string to `.format()` by the game numbers
+            in order to create the row prefixes.
+          start_game:  the starting game number of the deletion.
+          end_game:  the ending game number of the deletion.
+        """
         row_keys = make_single_array(
             self.tf_table.keys_by_range_dataset(
                 format_str.format(start_game),
                 format_str.format(end_game)))
         row_keys = list(row_keys)
+        if not row_keys:
+            utils.dbg('No rows left for games %d..%d' % (
+                start_game, end_game))
+            return
         utils.dbg('Deleting %d rows:  %s..%s' % (
             len(row_keys), row_keys[0], row_keys[-1]))
-        rows = [self.bt_table.row(k) for k in row_keys]
-        batch = []
-        def mutate_batch():
-            nonlocal batch
-            utils.dbg('...deleting batch %s..%s' % (
-                batch[0].row_key, batch[-1].row_key))
-            self.bt_table.mutate_rows(batch)
-            batch = []
-        while rows:
-            r = rows.pop()
-            r.delete()
-            batch.append(r)
-            if len(batch) >= bigtable.row.MAX_MUTATIONS:
-                mutate_batch()
-        mutate_batch()
+
+        # Reverse the keys so that the queue is left in a more
+        # sensible end state if you change your mind (say, due to a
+        # mistake in the timestamp) and abort the process: there will
+        # be a bit trimmed from the end, rather than a bit
+        # trimmed out of the middle.
+        row_keys.reverse()
+        total_keys = len(row_keys)
+        batches = [(self.btspec, b) for b in
+                   utils.iter_chunks(bigtable.row.MAX_MUTATIONS, row_keys)]
+        assert sum([len(b) for t, b in batches]) == total_keys
+        utils.dbg('Deleting %d batches, total of %d keys' % (
+            len(batches), total_keys))
+        concurrency = min(MAX_BT_CONCURRENCY,
+                          multiprocessing.cpu_count() * 2)
+        with multiprocessing.Pool(processes=concurrency) as pool:
+            pool.map(_delete_rows, batches)
 
     def trim_games_since(self, t, max_games=500000):
         """Trim off the games since the given time.
@@ -274,20 +331,27 @@ class GameQueue:
         game.  Otherwise, it will be the target time.
         """
         latest = self.latest_game_number
-        gbt = self.games_by_time(int(latest - max_games), latest)
+        earliest = int(latest - max_games)
+        gbt = self.games_by_time(earliest, latest)
+        if not gbt:
+            utils.dbg('No games between %d and %d' % (earliest, latest))
+            return
         most_recent = gbt[-1]
         if isinstance(t, datetime.timedelta):
             target = most_recent[0] - t
         else:
             target = t
         i = bisect.bisect_right(gbt, (target,))
+        if i >= len(gbt):
+            utils.dbg('Last game is already at %s' % gbt[-1][0])
+            return
         when, which = gbt[i]
         utils.dbg('Most recent:  %s  %s' % most_recent)
         utils.dbg('     Target:  %s  %s' % (when, which))
         which = int(which)
         self.delete_row_range(ROW_PREFIX, which, latest)
         self.delete_row_range(ROWCOUNT_PREFIX, which, latest)
-        self.latest_game_number = which + 1
+        self.latest_game_number = which
 
     def bleakest_moves(self, start_game, end_game):
         """Given a range of games, return the bleakest moves.
@@ -298,7 +362,7 @@ class GameQueue:
         rows = self.bt_table.read_rows(
             ROW_PREFIX.format(start_game),
             ROW_PREFIX.format(end_game),
-            filter_=row_filters.ColumnRangeFilter(
+            filter_=bigtable_row_filters.ColumnRangeFilter(
                 METADATA, bleak, bleak))
         def parse(r):
             rk = str(r.row_key, 'utf-8')
@@ -322,6 +386,7 @@ class GameQueue:
         table_state = self.bt_table.row(TABLE_STATE)
         table_state.set_cell(METADATA, WAIT_CELL, int(latest + number_fresh))
         table_state.commit()
+        print("== Setting wait cell to ", int(latest + number_fresh), flush=True)
 
     def wait_for_fresh_games(self, poll_interval=15.0):
         """Block caller until required new games have been played.
@@ -334,27 +399,45 @@ class GameQueue:
         until `table_state=metadata:game_counter is at least the value
         in that cell.
         """
+        wait_until_game = self.read_wait_cell()
+        if not wait_until_game:
+            return
+        latest_game = self.latest_game_number
+        last_latest = latest_game
+        while latest_game < wait_until_game:
+            utils.dbg('Latest game {} not yet at required game {} '
+                      '(+{}, {:0.3f} games/sec)'.format(
+                              latest_game,
+                              wait_until_game,
+                              latest_game - last_latest,
+                              (latest_game - last_latest) / poll_interval
+                      ))
+            time.sleep(poll_interval)
+            last_latest = latest_game
+            latest_game = self.latest_game_number
+
+    def read_wait_cell(self):
+        """Read the value of the cell holding the 'wait' value,
+
+        Returns the int value of whatever it has, or None if the cell doesn't
+        exist.
+        """
+
         table_state = self.bt_table.read_row(
             TABLE_STATE,
-            filter_=row_filters.ColumnRangeFilter(
+            filter_=bigtable_row_filters.ColumnRangeFilter(
                 METADATA, WAIT_CELL, WAIT_CELL))
         if table_state is None:
             utils.dbg('No waiting for new games needed; '
                       'wait_for_game_number column not in table_state')
-            return
+            return None
         value = table_state.cell_value(METADATA, WAIT_CELL)
         if not value:
             utils.dbg('No waiting for new games needed; '
                       'no value in wait_for_game_number cell '
                       'in table_state')
-            return
-        wait_until_game = cbt_intvalue(value)
-        latest_game = self.latest_game_number
-        while latest_game < wait_until_game:
-            utils.dbg('Latest game {} not yet at required game {}'.
-                      format(latest_game, wait_until_game))
-            time.sleep(poll_interval)
-            latest_game = self.latest_game_number
+            return None
+        return cbt_intvalue(value)
 
     def count_moves_in_game_range(self, game_begin, game_end):
         """Count the total moves in a game range.
@@ -368,7 +451,7 @@ class GameQueue:
         rows = self.bt_table.read_rows(
             ROWCOUNT_PREFIX.format(game_begin),
             ROWCOUNT_PREFIX.format(game_end),
-            filter_=row_filters.ColumnRangeFilter(
+            filter_=bigtable_row_filters.ColumnRangeFilter(
                 METADATA, MOVE_COUNT, MOVE_COUNT))
         return sum([int(r.cell_value(METADATA, MOVE_COUNT)) for r in rows])
 
@@ -397,7 +480,6 @@ class GameQueue:
         probability = moves / (total_moves * 0.99)
         utils.dbg('Row range: %s - %s; total moves: %d; probability %.3f; moves %d' % (
             start_row, end_row, total_moves, probability, moves))
-        shards = 8
         ds = self.tf_table.parallel_scan_range(start_row, end_row,
                                                probability=probability,
                                                columns=[(column_family, column)])
@@ -409,16 +491,28 @@ class GameQueue:
 
     def moves_from_last_n_games(self, n, moves, shuffle,
                                 column_family, column):
-      self.wait_for_fresh_games()
-      latest_game = self.latest_game_number
-      utils.dbg('Latest game in %s: %s' % (self.table_name, latest_game))
-      if latest_game == 0:
-          raise ValueError('Cannot find a latest game in the table')
+        """Randomly choose a given number of moves from the last n games.
 
-      start = int(max(0, latest_game - n))
-      ds = self.moves_from_games(start, latest_game, moves, shuffle,
+        Args:
+          n:  number of games at the end of this GameQueue to source.
+          moves:  number of moves to be sampled from `n` games.
+          shuffle:  if True, shuffle the selected moves.
+          column_family:  name of the column family containing move examples.
+          column:  name of the column containing move examples.
+
+        Returns:
+          a dataset containing the selected moves.
+        """
+        self.wait_for_fresh_games()
+        latest_game = self.latest_game_number
+        utils.dbg('Latest game in %s: %s' % (self.btspec.table, latest_game))
+        if latest_game == 0:
+            raise ValueError('Cannot find a latest game in the table')
+
+        start = int(max(0, latest_game - n))
+        ds = self.moves_from_games(start, latest_game, moves, shuffle,
                                    column_family, column)
-      return ds
+        return ds
 
     def _write_move_counts(self, sess, h):
         """Add move counts from the given histogram to the table.
@@ -467,27 +561,30 @@ class GameQueue:
                 print('  games/sec:', len(h)/elapsed)
 
 
-def set_fresh_watermark(games, window_size, fresh_fraction=0.05, minimum_fresh=20000):
+def set_fresh_watermark(game_queue, count_from, window_size, fresh_fraction=0.05, minimum_fresh=20000):
     """Sets the metadata cell used to block until some quantity of games have been played.
 
-    This sets the 'high water mark' on the `games` queue, used to block training
+    This sets the 'high water mark' on the `game_queue`, used to block training
     until enough new games have been played.  The number of fresh games required
     is the larger of:
        - The fraction of the total window size
        - The `minimum_fresh` parameter
     Args:
-      games: A GameQueue object, on whose backing table will be modified.
+      game_queue: A GameQueue object, on whose backing table will be modified.
+      count_from: 
       window_size:  an integer indicating how many past games are considered
       fresh_fraction: a float in (0,1] indicating the fraction of games to wait for
       minimum_fresh:  an integer indicating the lower bound on the number of new
       games.
     """
-    latest_game = games.latest_game_number
-    if window_size > latest_game: # How to handle the case when the window is not yet 'full'
-        games.require_fresh_games(int(minimum_fresh * .9))
+    already_played = game_queue.latest_game_number - count_from
+    print("== already_played: ", already_played, flush=True)
+    if window_size > count_from: # How to handle the case when the window is not yet 'full'
+        game_queue.require_fresh_games(int(minimum_fresh * .9))
     else:
-        games.require_fresh_games(
-                math.ceil(window_size * .9 * fresh_fraction))
+        num_to_play = max(0, math.ceil(window_size * .9 * fresh_fraction) - already_played)
+        print("== Num to play: ", num_to_play, flush=True)
+        game_queue.require_fresh_games(num_to_play)
 
 
 def get_unparsed_moves_from_last_n_games(games, games_nr, n,
