@@ -54,13 +54,6 @@
 // Game options flags.
 DEFINE_string(mode, "",
               "Mode to run in: \"selfplay\", \"eval\", \"gtp\" or \"puzzle\".");
-DEFINE_int32(
-    ponder_limit, 0,
-    "If non-zero and in GTP mode, the number times of times to perform tree "
-    "search while waiting for the opponent to play.");
-DEFINE_bool(
-    courtesy_pass, false,
-    "If true and in GTP mode, we will always pass if the opponent passes.");
 DEFINE_double(resign_threshold, -0.999, "Resign threshold.");
 DEFINE_double(komi, minigo::kDefaultKomi, "Komi.");
 DEFINE_double(disable_resign_pct, 0.1,
@@ -126,9 +119,6 @@ DEFINE_string(model_two, "",
               "When running 'eval' mode, provide a path to a second minigo "
               "model, also serialized as a GraphDef proto.");
 DEFINE_int32(parallel_games, 32, "Number of games to play in parallel.");
-DEFINE_string(checkpoint_glob, "",
-              "A glob to monitor for newly trained models. When a new model is "
-              "found, it is loaded and used for further inferences.");
 
 // Output flags.
 DEFINE_string(output_dir, "",
@@ -663,91 +653,6 @@ void Eval() {
   evaluator.Run();
 }
 
-void Gtp() {
-  GtpPlayer::Options options;
-  ParseMctsPlayerOptionsFromFlags(&options);
-
-  options.name = absl::StrCat("minigo-", file::Basename(FLAGS_model));
-  options.ponder_limit = FLAGS_ponder_limit;
-  options.courtesy_pass = FLAGS_courtesy_pass;
-  auto model_factory = NewDualNetFactory();
-  auto player = absl::make_unique<GtpPlayer>(
-      model_factory->NewDualNet(FLAGS_model), options);
-  model_factory->StartGame(player->network(), player->network());
-  player->Run();
-  model_factory->EndGame(player->network(), player->network());
-}
-
-void Puzzle() {
-  auto start_time = absl::Now();
-
-  auto model_factory = NewDualNetFactory();
-  MG_LOG(INFO) << "DualNet factory created from " << FLAGS_model << " in "
-               << absl::ToDoubleSeconds(absl::Now() - start_time) << " sec.";
-
-  MctsPlayer::Options options;
-  ParseMctsPlayerOptionsFromFlags(&options);
-  options.verbose = false;
-
-  std::atomic<size_t> total_moves(0);
-  std::atomic<size_t> correct_moves(0);
-
-  std::vector<std::thread> threads;
-  std::vector<std::string> basenames;
-  MG_CHECK(file::ListDir(FLAGS_sgf_dir, &basenames));
-  for (const auto& basename : basenames) {
-    if (!absl::EndsWith(basename, ".sgf")) {
-      continue;
-    }
-    threads.emplace_back([&]() {
-      // Read the main line from the SGF.
-      auto path = file::JoinPath(FLAGS_sgf_dir, basename);
-      std::string contents;
-      MG_CHECK(file::ReadFile(path, &contents));
-      sgf::Ast ast;
-      MG_CHECK(ast.Parse(contents));
-      auto trees = GetTrees(ast);
-      MG_CHECK(!trees.empty());
-      auto moves = trees[0]->ExtractMainLine();
-
-      total_moves += moves.size();
-
-      // Create player.
-      auto player = absl::make_unique<MctsPlayer>(
-          model_factory->NewDualNet(FLAGS_model), options);
-      model_factory->StartGame(player->network(), player->network());
-
-      // Play through each game. For each position in the game, compare the
-      // model's suggested move to the actual move played in the game.
-      for (size_t move_to_predict = 0; move_to_predict < moves.size();
-           ++move_to_predict) {
-        // Reset the game and play up to the position to be tested.
-        player->NewGame();
-        for (size_t i = 0; i < move_to_predict; ++i) {
-          player->PlayMove(moves[i].c);
-        }
-
-        // Check if we predict the move that was played.
-        auto expected_move = moves[move_to_predict].c;
-        auto actual_move = player->SuggestMove();
-        if (actual_move == expected_move) {
-          ++correct_moves;
-        }
-      }
-      model_factory->EndGame(player->network(), player->network());
-    });
-  }
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
-
-  MG_LOG(INFO) << absl::StreamFormat(
-      "Solved %d of %d puzzles (%3.1f%%), total time %f sec.", correct_moves,
-      total_moves, correct_moves * 100.0f / total_moves,
-      absl::ToDoubleSeconds(absl::Now() - start_time));
-}
-
 }  // namespace
 }  // namespace minigo
 
@@ -760,10 +665,6 @@ int main(int argc, char* argv[]) {
     minigo::SelfPlay();
   } else if (FLAGS_mode == "eval") {
     minigo::Eval();
-  } else if (FLAGS_mode == "gtp") {
-    minigo::Gtp();
-  } else if (FLAGS_mode == "puzzle") {
-    minigo::Puzzle();
   } else {
     MG_LOG(FATAL) << "Unrecognized mode \"" << FLAGS_mode << "\"";
   }
