@@ -27,7 +27,7 @@ from rl_loop import fsdb
 
 from ratings import ratings
 
-MAX_TASKS = 300  # Keep < 1000, or k8s will not track completions accurately.
+MAX_TASKS = 300  # Keep < 500, or k8s may not track completions accurately.
 
 
 def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
