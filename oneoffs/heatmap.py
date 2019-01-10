@@ -1,3 +1,17 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Used to plot a heatmap of the policy and value networks.
 Check FLAGS for default values.
@@ -9,16 +23,14 @@ python heatmap.py
 import sys
 sys.path.insert(0, '.')
 
-import itertools
 import os
 
-import numpy as np
 import tensorflow as tf
 from absl import app, flags
 from tqdm import tqdm
 
 import go
-import fsdb
+from rl_loop import fsdb
 import oneoff_utils
 
 
@@ -82,8 +94,7 @@ def positions_from_sgfs(sgf_files, include_empty=True):
 
     for sgf in sgf_files:
         sgf_name = os.path.basename(sgf).replace(".sgf", "")
-        sgf_positions, moves, _ = oneoff_utils.parse_sgf(sgf)
-        final = sgf_positions[-1].play_move(moves[-1])
+        final = oneoff_utils.final_position_sgf(sgf)
         positions.append((sgf_name, final))
     return positions
 

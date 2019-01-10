@@ -66,4 +66,18 @@ void DualNet::SetFeatures(absl::Span<const Position::Stones* const> history,
 
 DualNet::~DualNet() = default;
 
+DualNet::InputLayout DualNet::GetInputLayout() const {
+  return InputLayout::kNHWC;
+}
+
+void DualNet::Reserve(size_t) {}
+
+DualNetFactory::~DualNetFactory() = default;
+
+int DualNetFactory::GetBufferCount() const { return 1; }
+
+void DualNetFactory::StartGame(DualNet* black, DualNet* white) {}
+
+void DualNetFactory::EndGame(DualNet* black, DualNet* white) {}
+
 }  // namespace minigo

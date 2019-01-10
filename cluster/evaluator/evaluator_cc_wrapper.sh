@@ -16,7 +16,7 @@
 # Added to the evaluator image.
 # Wraps our call to cc/main
 
-# MODEL_BLACK and MODEL_WHITE should be full gs:// paths
+# MODEL_BLACK and MODEL_WHITE should be full gs:// paths to .pb files
 
 set -e
 
@@ -26,14 +26,14 @@ echo bucket: $SGF_BUCKET_NAME
 echo black:  ${MODEL_BLACK}
 echo white:  ${MODEL_WHITE}
 
+# TODO(amj) Check that cc/main runs with perms to read a gs:// path directly
 echo Retrieiving Models
 gsutil cp ${MODEL_BLACK} .
 gsutil cp ${MODEL_WHITE} .
 
-#TODO use `basename` instead
-BASENAME_BLACK=`echo $MODEL_BLACK  | rev | cut -d/ -f1 | rev`
-BASENAME_WHITE=`echo $MODEL_WHITE  | rev | cut -d/ -f1 | rev`
-DATE=`date +%Y-%m-%d` 
+BASENAME_BLACK=`basename $MODEL_BLACK`
+BASENAME_WHITE=`basename $MODEL_WHITE`
+DATE=`date +%Y-%m-%d`
 
 bazel-bin/cc/main --mode=eval \
   --model=$BASENAME_BLACK \

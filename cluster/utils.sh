@@ -37,6 +37,19 @@ function check_gcloud_exists() {
 }
 
 
+# Checks that the cbt (Cloud Bigtable) CLI exists.
+function check_cbt_exists() {
+  command -v cbt >/dev/null 2>&1 || {
+    echo >&2 "cbt command is not defined"
+    echo >&2 "Install Google Cloud SDK first:"
+    echo >&2 "   https://cloud.google.com/sdk/downloads"
+    echo >&2 "then:"
+    echo >&2 "   gcloud components install cbt"
+    exit 1
+  }
+}
+
+
 # Creates a cloud bucket if it doesn't exist. Recall that cloud buckets are
 # a global namespace.
 #
@@ -57,6 +70,80 @@ function create_gcs_bucket() {
     echo >&2 "Bucket $BUCKET_NAME does not exist. Creating."
     gsutil mb -l $BUCKET_LOCATION gs://$BUCKET_NAME
   }
+}
+
+
+# Creates a Cloud Bigtable instance and table for storing games.
+# Globals:
+#   PROJECT: The cloud project
+#   CBT_INSTANCE: The Cloud Bigtable instance to create within PROJECT
+#   CBT_ZONE:  The zone in which to create the instance
+#   CBT_TABLE:  The name of the Cloud Bigtable table within the instance
+function create_cbt_instance() {
+  check_cbt_exists
+  if [[ -z "${PROJECT}" ]]; then
+    echo >&2 "PROJECT is not defined"
+    return 1
+  fi
+  if [[ -z "${CBT_INSTANCE}" ]]; then
+    echo >&2 "CBT_INSTANCE is not defined"
+    return 1
+  fi
+  if [[ -z "${CBT_TABLE}" ]]; then
+    echo >&2 "CBT_TABLE is not defined"
+    return 1
+  fi
+  if ! ( cbt -project ${PROJECT} createinstance ${CBT_INSTANCE} ${CBT_INSTANCE} \
+             ${CBT_INSTANCE}-c ${CBT_ZONE} 3 SSD ); then
+    echo "Could not create instance ${CBT_INSTANCE} in project ${PROJECT}"
+    return 1
+  fi
+}
+
+
+# Creates a Cloud Bigtable family.
+# Globals:
+#   PROJECT: The cloud project
+#   CBT_INSTANCE: The Cloud Bigtable instance within PROJECT (create if absent)
+#   CBT_TABLE:  The name of the Cloud Bigtable table to create in CBT_INSTANCE
+# Params
+#   $1: family
+function create_cbt_family() {
+  check_cbt_exists
+  family="$1"
+  if ( cbt -project ${PROJECT} -instance ${CBT_INSTANCE} ls ${CBT_TABLE} |& grep -wq "^${family}" ); then
+    echo "CBT family ${family} already exists in table ${PROJECT}:${CBT_INSTANCE}:${CBT_TABLE}"
+    return 0
+  fi
+  if ! ( cbt -project ${PROJECT} -instance ${CBT_INSTANCE} createfamily ${CBT_TABLE} ${family} &&
+         cbt -project ${PROJECT} -instance ${CBT_INSTANCE} setgcpolicy ${CBT_TABLE} ${family}  maxversions=1 ); then
+    echo "Could not create family ${family} in table ${CBT_TABLE}"
+    return 1
+  fi
+}
+
+# Creates a Cloud Bigtable table for storing games.
+# Globals:
+#   PROJECT: The cloud project
+#   CBT_INSTANCE: The Cloud Bigtable instance within PROJECT (create if absent)
+#   CBT_TABLE:  The name of the Cloud Bigtable table to create in CBT_INSTANCE
+function create_cbt_table() {
+  check_cbt_exists
+  if ! ( cbt -project ${PROJECT} listinstances |& grep -wq "^${CBT_INSTANCE}" ); then
+    echo "Creating cbt instance: ${CBT_INSTANCE}"
+    create_cbt_instance
+  fi
+
+  if ! ( cbt -project ${PROJECT} -instance ${CBT_INSTANCE} ls |& grep -wq "^${CBT_TABLE}" ); then
+    if ! ( cbt -project ${PROJECT} -instance ${CBT_INSTANCE} createtable ${CBT_TABLE} ); then
+      echo "Could not create table ${CBT_TABLE} on instance ${CBT_INSTANCE} in project ${PROJECT}"
+      return 1
+    fi
+  fi
+  if ! ( create_cbt_family tfexample &&
+         create_cbt_family metadata ); then
+    return 1
+  fi
 }
 
 

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import itertools
 import random
 import tempfile
 
@@ -33,7 +32,7 @@ TEST_SGF = "(;CA[UTF-8]SZ[9]PB[Murakawa Daisuke]PW[Iyama Yuta]KM[6.5]HA[0]RE[W+1
 class TestPreprocessing(test_utils.MiniGoUnitTest):
     def create_random_data(self, num_examples):
         raw_data = []
-        for i in range(num_examples):
+        for _ in range(num_examples):
             feature = (256 * np.random.random([
                 go.N, go.N, features.NEW_FEATURES_PLANES])).astype(np.uint8)
             pi = np.random.random([go.N * go.N + 1]).astype(np.float32)
@@ -41,11 +40,7 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
             raw_data.append((feature, pi, value))
         return raw_data
 
-    def extract_data(self, tf_record, filter_amount=1, random_rotation=False):
-        pos_tensor, label_tensors = preprocessing.get_input_tensors(
-            1, [tf_record], num_repeats=1, shuffle_records=False,
-            shuffle_examples=False, filter_amount=filter_amount,
-            random_rotation=random_rotation)
+    def get_data_tensors(self, pos_tensor, label_tensors):
         recovered_data = []
         with tf.Session() as sess:
             while True:
@@ -60,6 +55,20 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
                     break
         return recovered_data
 
+    def extract_data(self, tf_record, filter_amount=1, random_rotation=False):
+        pos_tensor, label_tensors = preprocessing.get_input_tensors(
+            1, [tf_record], num_repeats=1, shuffle_records=False,
+            shuffle_examples=False, filter_amount=filter_amount,
+            random_rotation=random_rotation)
+        return self.get_data_tensors(pos_tensor, label_tensors)
+
+    def extract_tpu_data(self, tf_record, random_rotation=False):
+        dataset = preprocessing.get_tpu_input_tensors(
+            1, [tf_record], num_repeats=1, filter_amount=1,
+            random_rotation=random_rotation)
+        pos_tensor, label_tensors = dataset.make_one_shot_iterator().get_next()
+        return self.get_data_tensors(pos_tensor, label_tensors)
+
     def assertEqualData(self, data1, data2):
         '''Assert that two data are equal, where both are of form:
         data = List<Tuple<feature_array, pi_array, value>>
@@ -72,6 +81,45 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
             self.assertEqualNPArray(datum1[1], datum2[1])
             # value
             self.assertEqual(datum1[2], datum2[2])
+
+    def reset_random(self):
+        random.seed(1)
+        tf.set_random_seed(1)
+
+    def find_symmetry(self, x, pi, x2, pi2):
+        for sym in symmetries.SYMMETRIES:
+            x_equal = (x == symmetries.apply_symmetry_feat(sym, x2)).all()
+            pi_equal = (pi == symmetries.apply_symmetry_pi(sym, pi2)).all()
+            if x_equal and pi_equal:
+                return sym
+
+        self.assertTrue(False, "No rotation makes {} equal {}".format(pi, pi2))
+
+    def x_and_pi_same(self, run_a, run_b):
+        x_a, pi_a, values_a = zip(*run_a)
+        x_b, pi_b, values_b = zip(*run_b)
+        self.assertEqual(values_a, values_b, "Values are not same")
+        return np.array_equal(x_a, x_b) and np.array_equal(pi_a, pi_b)
+
+    def assert_rotate_data(self, run_one, run_two, run_three):
+        """Verify run_one is rotated and run_two is identical to run_three"""
+        self.assertTrue(
+            self.x_and_pi_same(run_two, run_three),
+            "Not deterministic")
+        self.assertFalse(
+            self.x_and_pi_same(run_one, run_two),
+            "Not randomly rotated")
+
+        syms = []
+        for (x, pi, v), (x2, pi2, v2) in zip(run_one, run_two):
+            self.assertEqual(v, v2, "values not the same")
+            # For each record find the symmetry that makes them equal
+            syms.extend(
+                map(lambda r: self.find_symmetry(*r), zip(x, pi, x2, pi2)))
+
+        difference = set(symmetries.SYMMETRIES) - set(syms)
+        self.assertEqual(len(run_one), len(syms), "Not same number of records")
+        self.assertEqual(set(), difference, "Didn't find these rotations")
 
     def test_serialize_round_trip(self):
         np.random.seed(1)
@@ -94,7 +142,6 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
 
         # TODO: this will flake out very infrequently.  Use set_random_seed
         self.assertLess(len(recovered_data), 50)
-
 
     def test_make_dataset_from_sgf(self):
         with tempfile.NamedTemporaryFile() as sgf_file, \
@@ -121,26 +168,6 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
         self.assertEqualData(expected_data, recovered_data)
 
     def test_rotate_pyfunc(self):
-        def reset_random():
-            random.seed(1)
-            tf.set_random_seed(1)
-
-        def find_symmetry(x, pi, x2, pi2):
-            for sym in symmetries.SYMMETRIES:
-                x_equal = (x == symmetries.apply_symmetry_feat(sym, x2)).all()
-                pi_equal = (pi == symmetries.apply_symmetry_pi(sym, pi2)).all()
-                if x_equal and pi_equal:
-                    return sym
-
-            assert False, "No rotation makes {} equal {}".format(
-                pi.reshape((go.N, go.N)), pi2((go.N, go.N)))
-
-        def x_and_pi_same(run_a, run_b):
-            x_a, pi_a, values_a = zip(*run_a)
-            x_b, pi_b, values_b = zip(*run_b)
-            assert values_a == values_b, "Values are not same"
-            return np.array_equal(x_a, x_b) and np.array_equal(pi_a, pi_b)
-
         num_records = 20
         raw_data = self.create_random_data(num_records)
         tfexamples = list(map(preprocessing.make_tf_example, *zip(*raw_data)))
@@ -148,27 +175,32 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
         with tempfile.NamedTemporaryFile() as f:
             preprocessing.write_tf_examples(f.name, tfexamples)
 
-            reset_random()
-            run_one = self.extract_data(
-                f.name, filter_amount=1, random_rotation=False)
+            self.reset_random()
+            run_one = self.extract_data(f.name, random_rotation=False)
 
-            reset_random()
-            run_two = self.extract_data(
-                f.name, filter_amount=1, random_rotation=True)
+            self.reset_random()
+            run_two = self.extract_data(f.name, random_rotation=True)
 
-            reset_random()
-            run_three = self.extract_data(
-                f.name, filter_amount=1, random_rotation=True)
+            self.reset_random()
+            run_three = self.extract_data(f.name, random_rotation=True)
 
-        assert x_and_pi_same(run_two, run_three), "Not deterministic"
-        assert not x_and_pi_same(run_one, run_two), "Should have been rotated"
+        self.assert_rotate_data(run_one, run_two, run_three)
 
-        syms = []
-        for (x, pi, v), (x2, pi2, v2) in zip(run_one, run_two):
-            assert v == v2, "Values not the same"
-            # For each record find the symmetry that makes them equal
-            syms.extend(map(lambda r: find_symmetry(*r), zip(x, pi, x2, pi2)))
+    def test_tpu_rotate(self):
+        num_records = 100
+        raw_data = self.create_random_data(num_records)
+        tfexamples = list(map(preprocessing.make_tf_example, *zip(*raw_data)))
 
-        difference = set(symmetries.SYMMETRIES) - set(syms)
-        assert len(syms) == num_records, (len(syms), num_records)
-        assert len(difference) == 0, "Didn't find {}".format(difference)
+        with tempfile.NamedTemporaryFile() as f:
+            preprocessing.write_tf_examples(f.name, tfexamples)
+
+            self.reset_random()
+            run_one = self.extract_tpu_data(f.name, random_rotation=False)
+
+            self.reset_random()
+            run_two = self.extract_tpu_data(f.name, random_rotation=True)
+
+            self.reset_random()
+            run_three = self.extract_tpu_data(f.name, random_rotation=True)
+
+        self.assert_rotate_data(run_one, run_two, run_three)

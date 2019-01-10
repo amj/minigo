@@ -15,33 +15,52 @@
 #ifndef CC_TF_UTILS_H_
 #define CC_TF_UTILS_H_
 
-#include <array>
 #include <string>
+#include <vector>
 
-#include "cc/constants.h"
-#include "cc/dual_net/dual_net.h"
-
-#include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "cc/game.h"
 
 namespace minigo {
 namespace tf_utils {
 
-// Converts board features, and the pi & value outputs of MTCS to a tensorflow
-// example proto.
-tensorflow::Example MakeTfExample(const DualNet::BoardFeatures& features,
-                                  const std::array<float, kNumMoves>& pi,
-                                  float outcome);
-
 // Writes a list of tensorflow Example protos to a zlib compressed TFRecord
-// file.
-void WriteTfExamples(const std::string& path,
-                     absl::Span<const tensorflow::Example> examples);
+// file, one for each position in the player's move history.
+// Each example contains:
+//   x: the input BoardFeatures as bytes.
+//   pi: the search pi as a float array, serialized as bytes.
+//   outcome: a single float containing the game result +/-1.
+// CHECK fails if the binary was not compiled with --define=tf=1.
+void WriteGameExamples(const std::string& output_dir,
+                       const std::string& output_name, const Game& game);
 
-// Uses Tensorflow to write a file in one shot. This allows writing to GCS, etc
-// when Tensorflow is compiled with that support.
-__attribute__((warn_unused_result)) tensorflow::Status WriteFile(
-    const std::string& path, absl::string_view contents);
+// Writes a list of tensorflow Example protos to the specified
+// Bigtable, one example per row, starting at the given row cursor.
+void WriteGameExamples(const std::string& gcp_project_name,
+                       const std::string& instance_name,
+                       const std::string& table_name, const Game& game);
+
+// Writes information about an eval game to the specified Bigtable.
+void WriteEvalRecord(const std::string& gcp_project_name,
+                     const std::string& instance_name,
+                     const std::string& table_name, const Game& game,
+                     const std::string& sgf_name, const std::string& tag);
+
+// Atomically increment the game counter in the given Bigtable by the given
+// delta.  Returns the new value.  Prior value will be returned - delta.
+uint64_t IncrementGameCounter(const std::string& gcp_project_name,
+                              const std::string& instance_name,
+                              const std::string& table_name,
+                              const std::string& counter_name, size_t delta);
+
+// Port Minigo games from the given GCS files, which must be in
+// `.tfrecord.zz` format.  If game_counter is >=0, use that
+// and increment from there.  Otherwise, atomically increment
+// and use the value from `table_state=metadata:game_counter`.
+void PortGamesToBigtable(const std::string& gcp_project_name,
+                         const std::string& instance_name,
+                         const std::string& table_name,
+                         const std::vector<std::string>& paths,
+                         int64_t game_counter = -1);
 
 }  // namespace tf_utils
 }  // namespace minigo

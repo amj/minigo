@@ -33,6 +33,8 @@ class TestablePosition : public Position {
   TestablePosition(absl::string_view board_str, Color to_play = Color::kBlack,
                    int n = 0);
 
+  using Position::PlayMove;
+
   // Convenience functions that automatically parse coords.
   void PlayMove(absl::string_view str, Color color = Color::kEmpty) {
     Position::PlayMove(Coord::FromString(str), color);
@@ -43,9 +45,10 @@ class TestablePosition : public Position {
   Color IsKoish(absl::string_view str) const {
     return Position::IsKoish(Coord::FromString(str));
   }
-  bool IsMoveSuicidal(absl::string_view str, Color color) const {
-    return Position::IsMoveSuicidal(Coord::FromString(str), color);
+  MoveType ClassifyMove(absl::string_view str) const {
+    return Position::ClassifyMove(Coord::FromString(str));
   }
+  using Position::ClassifyMove;
 
   BoardVisitor board_visitor;
   GroupVisitor group_visitor;

@@ -18,43 +18,32 @@
 # users, but largely for automation.
 #
 # NOTE! If this file changes/moves, please change
-# https://github.com/kubernetes/test-infra/blob/master/jobs/config.json
+# https://github.com/kubernetes/test-infra/blob/master/config/jobs/tensorflow/minigo/minigo.yaml
 
 # Ensure we're running from this directory to ensure PYTHONPATH is set
 # correctly.
 cd "$(dirname "$0")"
 
 lint_fail=0
-ls *.py | xargs pylint || {
+python3 -m pylint *.py || {
   lint_fail=1
+  echo >&2 "--------------------------------------"
+  echo >&2 "Py linting did not pass successfully!"
 }
 
-test_fail=0
 PYTHONPATH= BOARD_SIZE=9 python3 tests/run_tests.py || {
-  test_fail=1
+  echo >&2 "--------------------------------------"
+  echo >&2 "The tests did not pass successfully!"
+  exit 1
 }
 
-integration_fail=0
-BOARD_SIZE=9 python3 local_rl_loop.py || {
-  integration_fail=1
+BOARD_SIZE=9 python3 rl_loop/local_integration_test.py || {
+  echo >&2 "--------------------------------------"
+  echo >&2 "Integration test did not pass successfully!"
+  exit 1
 }
 
 if [ "${lint_fail}" -eq "1" ]; then
-  echo >&2 "--------------------------------------"
-  echo >&2 "Py linting did not pass successfully!"
-fi
-
-if [ "${test_fail}" -eq "1" ]; then
-  echo >&2 "--------------------------------------"
-  echo >&2 "The tests did not pass successfully!"
-fi
-
-if [ "${integration_fail}" -eq "1" ]; then
-  echo >&2 "--------------------------------------"
-  echo >&2 "Integration test did not pass successfully!"
-fi
-
-if [ "${test_fail}" -eq "1" ] || [ "${lint_fail}" -eq "1" ] || [ "${integration_fail}" -eq "1" ]; then
   exit 1
 fi
 

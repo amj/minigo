@@ -20,6 +20,7 @@
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "cc/constants.h"
+#include "cc/logging.h"
 
 namespace minigo {
 
@@ -34,11 +35,11 @@ std::vector<std::string> SplitBoardString(absl::string_view str) {
     if (stripped.empty()) {
       continue;
     }
-    assert(stripped.size() <= kN);
+    MG_CHECK(stripped.size() <= kN);
     stripped.resize(kN, '.');
     lines.push_back(std::move(stripped));
   }
-  assert(lines.size() <= kN);
+  MG_CHECK(lines.size() <= kN);
   while (lines.size() < kN) {
     lines.emplace_back(kN, '.');
   }
@@ -48,7 +49,7 @@ std::vector<std::string> SplitBoardString(absl::string_view str) {
 }  // namespace
 
 std::string CleanBoardString(absl::string_view str) {
-  return absl::StrJoin(SplitBoardString(str), "\n") + "\n";
+  return absl::StrJoin(SplitBoardString(str), "\n");
 }
 
 TestablePosition::TestablePosition(absl::string_view board_str, Color to_play,
@@ -86,7 +87,7 @@ int CountPendingVirtualLosses(const MctsNode* node) {
   while (!pending.empty()) {
     node = pending.back();
     pending.pop_back();
-    assert(node->num_virtual_losses_applied >= 0);
+    MG_CHECK(node->num_virtual_losses_applied >= 0);
     num += node->num_virtual_losses_applied;
     for (const auto& p : node->children) {
       pending.push_back(p.second.get());

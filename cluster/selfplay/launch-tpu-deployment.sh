@@ -32,15 +32,13 @@ command -v envsubst >/dev/null 2>&1 || {
   exit 1;
 }
 
-: ${WORK_DIR?"Need to set WORK_DIR"}
 : ${BUCKET_NAME?"Need to set BUCKET_NAME"}
 : ${SERVICE_ACCOUNT?"Need to set SERVICE_ACCOUNT"}
 
-echo "-------------------------"
-echo "  Launching TPU Cluster"
-echo "-------------------------"
+echo "----------------------------"
+echo "  Launching TPU Deployment"
+echo "----------------------------"
 echo "Bucket:       $BUCKET_NAME"
-echo "Working dir:  $WORK_DIR"
 echo "Service acct: $SERVICE_ACCOUNT"
-echo "-------------------------"
+echo "----------------------------"
 cat ${SCRIPT_DIR}/tpu-player-deployment.yaml | envsubst | kubectl apply -f -

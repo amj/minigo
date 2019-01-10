@@ -1,22 +1,44 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 
-import sgf
 from tensorflow import gfile
 from tqdm import tqdm
 
 import dual_net
-import shipname
-from gtp_wrapper import MCTSPlayer
+from rl_loop import shipname
+from strategies import MCTSPlayer
 import sgf_wrapper
-from utils import parse_game_result, logged_timer
+from utils import logged_timer
 
 
-def parse_sgf(sgf_path):
-    with open(sgf_path) as f:
-        sgf_contents = f.read()
+def final_position_sgf(sgf_path):
+    for pwc in sgf_wrapper.replay_sgf_file(sgf_path):
+        pass
+
+    return pwc.position.play_move(pwc.next_move)
+
+
+def parse_sgf_to_examples(sgf_path):
+    """Return supervised examples from positions
+
+    NOTE: last move is not played because no p.next_move after.
+    """
 
     return zip(*[(p.position, p.next_move, p.result)
-                 for p in sgf_wrapper.replay_sgf(sgf_contents)])
+                 for p in sgf_wrapper.replay_sgf_file(sgf_path)])
 
 
 def check_year(props, year):
@@ -27,8 +49,8 @@ def check_year(props, year):
 
     try:
         # Most sgf files in this database have dates of the form
-        #"2005-01-15", but there are some rare exceptions like
-        #"Broadcasted on 2005-01-15.
+        # "2005-01-15", but there are some rare exceptions like
+        # "Broadcasted on 2005-01-15.
         year_sgf = int(props.get('DT')[0][:4])
     except:
         return False
@@ -43,25 +65,34 @@ def check_komi(props, komi_str):
     return props.get('KM')[0] == komi_str
 
 
+def filter_year_komi(min_year=None, komi=None):
+    def validate(path):
+        with open(path) as f:
+            sgf_contents = f.read()
+        props = sgf_wrapper.get_sgf_root_node(sgf_contents).properties
+        return check_komi(props, komi) and check_year(props, min_year)
+    return validate
+
+
 def find_and_filter_sgf_files(base_dir, min_year=None, komi=None):
+    """Finds all sgf files in base_dir with year >= min_year and komi"""
     sgf_files = []
-    print("Finding all sgf files in {} with year >= {} and komi = {}".format(
-        base_dir, min_year, komi))
-    count = 0
-    for dirpath, dirnames, filenames in tqdm(os.walk(base_dir)):
+    for dirpath, dirnames, filenames in os.walk(base_dir):
         for filename in filenames:
-            count += 1
-            if count % 5000 == 0:
-                print("Parsed {}, Found {}".format(count, len(sgf_files)))
             if filename.endswith('.sgf'):
                 path = os.path.join(dirpath, filename)
-                with open(path) as f:
-                    sgf_contents = f.read()
-                props = sgf_wrapper.get_sgf_root_node(sgf_contents).properties
-                if check_year(props, min_year) and check_komi(props, komi):
-                    sgf_files.append(path)
-    print("Found {} sgf files matching filters".format(len(sgf_files)))
-    return sgf_files
+                sgf_files.append(path)
+
+    if min_year == komi == None:
+        print ("Found {} sgf_files".format(len(sgf_files)))
+        return sgf_files
+
+    f = filter_year_komi(min_year, komi)
+    filtered_sgf_files = [sgf for sgf in tqdm(sgf_files) if f(sgf)]
+
+    print("{} of {} .sgf files matched (min_year >= {}, komi = {})".format(
+        len(filtered_sgf_files), len(sgf_files), min_year, komi))
+    return filtered_sgf_files
 
 
 def get_model_paths(model_dir):
@@ -80,7 +111,7 @@ def load_player(model_path):
     with logged_timer("Loading weights from %s ... " % model_path):
         network = dual_net.DualNetwork(model_path)
         network.name = os.path.basename(model_path)
-    player = MCTSPlayer(network, verbosity=2)
+    player = MCTSPlayer(network)
     return player
 
 

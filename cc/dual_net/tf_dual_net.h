@@ -17,32 +17,21 @@
 
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
-#include "absl/types/span.h"
-#include "cc/constants.h"
 #include "cc/dual_net/dual_net.h"
-#include "cc/position.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/public/session.h"
 
 namespace minigo {
 
-class TfDualNet : public DualNet {
+class TfDualNetFactory : public DualNetFactory {
  public:
-  explicit TfDualNet(const std::string& graph_path);
-  ~TfDualNet() override;
+  TfDualNetFactory();
 
-  void RunMany(absl::Span<const BoardFeatures> features,
-               absl::Span<Output> outputs, std::string* model) override;
+  int GetBufferCount() const override;
+
+  std::unique_ptr<DualNet> NewDualNet(const std::string& model) override;
 
  private:
-  std::unique_ptr<tensorflow::Session> session_;
-  std::vector<std::pair<std::string, tensorflow::Tensor>> inputs_;
-  std::vector<std::string> output_names_;
-  std::vector<tensorflow::Tensor> outputs_;
-  std::string graph_path_;
+  int device_count_;
 };
 
 }  // namespace minigo

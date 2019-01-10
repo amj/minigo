@@ -12,15 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {Nullable} from './base';
 import {getElement, querySelector} from './util';
 
-class Log {
-  private logElem: HTMLElement;
-  private consoleElem: HTMLElement;
+type CmdHandler = (cmd: string) => void;
 
-  constructor(logElemId: string, consoleElemId: string) {
+// TODO(tommadams): Rename to Console.
+class Log {
+  logElem: HTMLElement;
+  consoleElem: Nullable<HTMLElement> = null;
+  private cmdHandler: Nullable<CmdHandler> = null;
+
+  constructor(logElemId: string, consoleElemId: Nullable<string> = null) {
     this.logElem = getElement(logElemId);
-    this.consoleElem = getElement(consoleElemId);
+    if (consoleElemId) {
+      this.consoleElem = getElement(consoleElemId);
+      this.consoleElem.addEventListener('keypress', (e) => {
+        // The TypeScript compiler isn't smart enough to understand that
+        // consoleElem is never null here.
+        let elem = this.consoleElem as HTMLElement;
+        if (e.keyCode == 13) {
+          let cmd = elem.innerText.trim();
+          if (cmd != '' && this.cmdHandler) {
+            this.cmdHandler(cmd);
+          }
+          elem.innerHTML = '';
+          e.preventDefault();
+          return false;
+        }
+      });
+    }
   }
 
   log(msg: string | HTMLElement, className='') {
@@ -48,6 +69,26 @@ class Log {
   scroll() {
     if (this.logElem.lastElementChild) {
       this.logElem.lastElementChild.scrollIntoView();
+    }
+  }
+
+  onConsoleCmd(cmdHandler: CmdHandler) {
+    this.cmdHandler = cmdHandler;
+  }
+
+  get hasFocus() {
+    return this.consoleElem && document.activeElement == this.consoleElem;
+  }
+
+  focus() {
+    if (this.consoleElem) {
+      this.consoleElem.focus();
+    }
+  }
+
+  blur() {
+    if (this.consoleElem) {
+      this.consoleElem.blur();
     }
   }
 }

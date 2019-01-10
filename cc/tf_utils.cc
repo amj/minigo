@@ -14,8 +14,16 @@
 
 #include "cc/tf_utils.h"
 
+#include <algorithm>
+#include <array>
 #include <memory>
-#include "absl/types/span.h"
+
+#include "cc/constants.h"
+#include "cc/dual_net/dual_net.h"
+#include "cc/file/path.h"
+#include "cc/file/utils.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -31,9 +39,7 @@ namespace {
 template <typename T, size_t N>
 std::array<uint8_t, N> ConvertToBytes(const std::array<T, N>& src) {
   std::array<uint8_t, N> dst;
-  for (size_t i = 0; i < N; ++i) {
-    dst[i] = static_cast<uint8_t>(src[i]);
-  }
+  std::copy(src.begin(), src.end(), dst.begin());
   return dst;
 }
 
@@ -46,8 +52,8 @@ tensorflow::Feature MakeBytesFeature(const T& data) {
   return feature;
 }
 
-}  // namespace
-
+// Converts board features, and the pi & value outputs of MTCS to a tensorflow
+// example proto.
 tensorflow::Example MakeTfExample(const DualNet::BoardFeatures& features,
                                   const std::array<float, kNumMoves>& pi,
                                   float outcome) {
@@ -66,8 +72,10 @@ tensorflow::Example MakeTfExample(const DualNet::BoardFeatures& features,
   return example;
 }
 
+// Writes a list of tensorflow Example protos to a zlib compressed TFRecord
+// file.
 void WriteTfExamples(const std::string& path,
-                     absl::Span<const tensorflow::Example> examples) {
+                     const std::vector<tensorflow::Example>& examples) {
   std::unique_ptr<tensorflow::WritableFile> file;
   TF_CHECK_OK(tensorflow::Env::Default()->NewWritableFile(path, &file));
 
@@ -85,25 +93,29 @@ void WriteTfExamples(const std::string& path,
   TF_CHECK_OK(file->Close());
 }
 
-__attribute__((warn_unused_result)) tensorflow::Status WriteFile(
-    const std::string& path, absl::string_view contents) {
-  tensorflow::Status status;
+}  // namespace
 
-  std::unique_ptr<tensorflow::WritableFile> file;
-  status = tensorflow::Env::Default()->NewWritableFile(path, &file);
-  if (!status.ok()) {
-    return status;
+std::vector<tensorflow::Example> MakeExamples(const Game& game) {
+  // Write the TensorFlow examples.
+  std::vector<tensorflow::Example> examples;
+  examples.reserve(game.num_moves());
+  DualNet::BoardFeatures features;
+  std::vector<const Position::Stones*> recent_positions;
+  for (size_t i = 0; i < game.moves().size(); ++i) {
+    const auto* move = game.moves()[i].get();
+    game.GetStoneHistory(i, DualNet::kMoveHistory, &recent_positions);
+    DualNet::SetFeatures(recent_positions, move->color, &features);
+    examples.push_back(MakeTfExample(features, move->search_pi, game.result()));
   }
+  return examples;
+}
 
-  // *sigh* absl::string_view doesn't automatically convert to
-  // tensorflow::StringPiece even though I'm pretty sure they're exactly the
-  // same.
-  status = file->Append({contents.data(), contents.size()});
-  if (!status.ok()) {
-    return status;
-  }
-
-  return file->Close();
+void WriteGameExamples(const std::string& output_dir,
+                       const std::string& output_name, const Game& game) {
+  MG_CHECK(file::RecursivelyCreateDir(output_dir));
+  auto output_path = file::JoinPath(output_dir, output_name + ".tfrecord.zz");
+  auto examples = MakeExamples(game);
+  WriteTfExamples(output_path, examples);
 }
 
 }  // namespace tf_utils

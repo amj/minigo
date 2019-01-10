@@ -1,3 +1,17 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 '''
 Script to process debug SGFs for upload to BigQuery.
 
@@ -32,11 +46,10 @@ import re
 from absl import app, flags
 from tensorflow import gfile
 from tqdm import tqdm
-import sgf
 
 import coords
 import sgf_wrapper
-import shipname
+from rl_loop import shipname
 import utils
 
 DebugRow = collections.namedtuple('DebugRow', [
@@ -112,7 +125,6 @@ def extract_game_data(gcs_path, root_node):
     root_node.next.properties['C'][0] = '\n'.join(first_comment_node_lines[1:])
     resign_threshold = float(first_comment_node_lines[0].split()[-1])
 
-
     return {
         'worker_id': worker_id,
         'completed_time': completion_millis,
@@ -151,7 +163,7 @@ def extract_move_data(root_node, worker_id, completed_time, board_size):
             assert len(debug_rows) <= 1
             row_data = list(map(get_row_data, debug_rows))
         else:
-            row_data = [[0,0,0,0] for _ in range(board_size * board_size + 1)]
+            row_data = [[0] * 4 for _ in range(board_size * board_size + 1)]
             for debug_row in debug_rows:
                 move = debug_row.move
                 row_data[move] = get_row_data(debug_row)

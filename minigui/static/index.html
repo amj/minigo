@@ -3,44 +3,29 @@
 
 <html>
   <head>
-    <title>minigo</title>
+    <title>Minigo</title>
     <link href="style.css" rel="stylesheet">
     <script type="text/javascript" src="socketio/socket.io.min.js"></script>
-    <script data-main="minigui" src="require/require.js"></script>
+    <style>
+      body {
+        padding: 2%;
+        font-family: sans-serif;
+        font-size: 1em;
+        color: #ed9;
+      }
+      h1 { font-size: 1.5em; margin-top: 0; }
+      a { color: white; }
+    </style>
   </head>
+
   <body>
-    <div id="ui-container" class="hidden">
-      <div id="main-board"></div>
-      <div class="sp-30"></div>
-      <div class="fs-0">
-        <div id="search-board"></div>
-        <div class="sp-30"></div>
-        <div id="n-board"></div>
-        <div class="sp-30"></div>
-        <div id="q-board"></div>
-      </div>
-      <div class="sp-30"></div>
-      <div class="fs-0">
-        <div class="fs-0">
-          <div id="black-player" class="button">Human</div>
-          <div class="sp-20"></div>
-          <div id="white-player" class="button">Human</div>
-          <div class="sp-20"></div>
-          <div id="pass" class="grey button">Pass</div>
-          <div class="sp-20"></div>
-          <div id="reset" class="grey button">Reset</div>
-        </div>
-        <div class="sp-30"></div>
-        <div id="q-graph"></div>
-        <div class="sp-30"></div>
-        <div class="log-container">
-          <div id="log"></div>
-          <div class="console-wrapper">
-            <div class="console-prompt">&gt;</div><div contenteditable id="console"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div id="mode">play</div>
+    <h1>Welcome to Minigui!</h1>
+    Choose your mode:
+    <ul>
+      <li><a href="study.html">Study</a>: study games, explore variations.</li>
+      <li><a href="demo.html">Demo</a>: the full Minigo demo.</li>
+      <li><a href="lw_demo.html">Leightweight Demo</a>: a lighter weight UI for lower powered devices like Raspberry Pi.</li>
+      <li><a href="kiosk.html">Kiosk</a>: a selfplay-only kiosk mode.</li>
   </body>
 </html>
+

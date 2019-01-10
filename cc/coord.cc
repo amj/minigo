@@ -24,7 +24,7 @@ namespace minigo {
 
 constexpr uint16_t Coord::kPass;
 constexpr uint16_t Coord::kInvalid;
-constexpr char Coord::kKgsColumns[];
+const char Coord::kKgsColumns[20] = "ABCDEFGHJKLMNOPQRST";
 
 namespace {
 
@@ -52,7 +52,7 @@ Coord TryParseKgs(absl::string_view str) {
 }
 
 Coord TryParseSgf(absl::string_view str) {
-  if (str.empty()) {
+  if (str.empty() || (kN == 19 && str == "tt")) {
     return Coord::kPass;
   }
   if (str.size() != 2) {

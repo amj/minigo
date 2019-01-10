@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Color, otherColor, Point, BoardSize} from './board'
+import {BoardSize, Color, otherColor, Move, N} from './base'
 
 function getElement(id: string) {
   return document.getElementById(id) as HTMLElement;
@@ -22,7 +22,12 @@ function querySelector(selector: string) {
   return document.querySelector(selector) as HTMLElement;
 }
 
-function parseGtpPoint(gtpCoord: string, N: BoardSize): Point | 'pass' | 'resign' {
+function parseColor(color: string) {
+  let c = color[0].toLowerCase();
+  return c == 'b' ? Color.Black : Color.White;
+}
+
+function parseMove(gtpCoord: string): Move {
   if (gtpCoord == 'pass' || gtpCoord == 'resign') {
     return gtpCoord;
   }
@@ -34,26 +39,51 @@ function parseGtpPoint(gtpCoord: string, N: BoardSize): Point | 'pass' | 'resign
   return {row: row, col: col};
 }
 
-function parseVariation(str: string, N: BoardSize, toPlay: Color) {
-  if (str.trim() == '') {
-    return [];
+function parseMoves(moveStrs: string[]): Move[] {
+  let moves: Move[] = [];
+  for (let str of moveStrs) {
+    moves.push(parseMove(str));
   }
-  let moves = str.split(' ');
-  let variation = [];
-  let color = toPlay;
-  for (let move of moves) {
-    let p = parseGtpPoint(move, N)
-    if (p != 'pass' && p != 'resign') {
-      variation.push({p: p, color: color});
+  return moves;
+}
+
+function pixelRatio() {
+  return window.devicePixelRatio || 1;
+}
+
+function partialUpdate(src: any, dst: any, propNames: string[]) {
+  for (let name of propNames) {
+    if (src[name] != null) {
+      dst[name] = src[name];
     }
-    color = otherColor(color);
   }
-  return variation;
+  return dst;
+}
+
+// Converts a result like "B+R" or "W+3.5" to a human-readable string like
+// "Black wins by resignation" or "White wins by 3.5 points".
+function toPrettyResult(result: string) {
+  let prettyResult: string;
+  if (result[0] == 'W') {
+    prettyResult = 'White wins by ';
+  } else {
+    prettyResult = 'Black wins by ';
+  }
+  if (result[2] == 'R') {
+    prettyResult += 'resignation';
+  } else {
+    prettyResult += result.substr(2) + ' points';
+  }
+  return prettyResult;
 }
 
 export {
   getElement,
-  parseGtpPoint,
-  parseVariation,
+  parseColor,
+  parseMove,
+  parseMoves,
+  partialUpdate,
+  pixelRatio,
   querySelector,
+  toPrettyResult,
 }

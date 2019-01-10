@@ -15,7 +15,6 @@
 #ifndef CC_SGF_H_
 #define CC_SGF_H_
 
-#include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,7 +24,9 @@
 #include "absl/types/span.h"
 #include "cc/color.h"
 #include "cc/coord.h"
+#include "cc/logging.h"
 #include "cc/move.h"
+#include "cc/platform/utils.h"
 
 namespace minigo {
 namespace sgf {
@@ -40,8 +41,8 @@ class Ast {
   struct Property {
     std::string ToString() const;
 
-    absl::string_view id;
-    std::vector<absl::string_view> values;
+    std::string id;
+    std::vector<std::string> values;
   };
 
   struct Node {
@@ -60,7 +61,7 @@ class Ast {
   };
 
   // Parses the SGF file.
-  __attribute__((warn_unused_result)) bool Parse(std::string contents);
+  MG_WARN_UNUSED_RESULT bool Parse(std::string contents);
 
   // Returns a non-empty string containing error information if the most recent
   // call to Parse returned false.
@@ -74,6 +75,7 @@ class Ast {
   std::string contents_;
 };
 
+// TODO(tommadams): Replace sgf::MoveWithComment with sgf::Node.
 // A single move with a (possibly empty) comment.
 struct MoveWithComment {
   MoveWithComment() = default;
@@ -97,29 +99,35 @@ struct MoveWithComment {
 
 std::ostream& operator<<(std::ostream& ios, const MoveWithComment& move);
 
+struct Node {
+  Node(Move move, std::string comment)
+      : move(move), comment(std::move(comment)) {}
+
+  // Returns a flattened copy of the main line moves: the chain of moves formed
+  // by this node and its left-most descendants.
+  std::vector<Move> ExtractMainLine() const;
+
+  const Move move;
+  std::string comment;
+  std::vector<std::unique_ptr<Node>> children;
+};
+
 struct CreateSgfOptions {
   std::string black_name = kProgramIdentifier;
   std::string white_name = kProgramIdentifier;
   std::string ruleset = "Chinese";
   float komi = 7.5;
   std::string result;
+  std::string game_comment;
 };
 
 // Returns a valid SGF file for the given move sequence.
 std::string CreateSgfString(absl::Span<const MoveWithComment> moves,
                             const CreateSgfOptions& options);
 
-// Extracts the main line series of moves from a SGF AST tree.
-std::vector<Move> GetMainLineMoves(const Ast::Tree& tree);
-
-// Extracts the main line series of moves from the first tree in an SGF file.
-// Returns an empty vector if the AST has no trees.
-inline std::vector<Move> GetMainLineMoves(const Ast& ast) {
-  if (ast.trees().empty()) {
-    return {};
-  }
-  return GetMainLineMoves(ast.trees()[0]);
-}
+// Extracts the complete game trees from an SGF AST.
+MG_WARN_UNUSED_RESULT bool GetTrees(const Ast& ast,
+                                    std::vector<std::unique_ptr<Node>>* trees);
 
 }  // namespace sgf
 }  // namespace minigo

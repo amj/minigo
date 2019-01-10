@@ -27,8 +27,8 @@ import numpy as np
 import coords
 import go
 
-# 505 moves for 19x19, 113 for 9x9
-flags.DEFINE_integer('max_game_length', int(go.N ** 2 * 1.4),
+# 722 moves for 19x19, 162 for 9x9
+flags.DEFINE_integer('max_game_length', int(go.N ** 2 * 2),
                      'Move number at which game is forcibly terminated')
 
 flags.DEFINE_float('c_puct', 0.96,
@@ -94,9 +94,8 @@ class MCTSNode(object):
 
     @property
     def child_action_score(self):
-        return (self.child_Q * self.position.to_play
-            + self.child_U
-            - 1000 * self.illegal_moves)
+        return (self.child_Q * self.position.to_play +
+                self.child_U - 1000 * self.illegal_moves)
 
     @property
     def child_Q(self):
@@ -104,7 +103,7 @@ class MCTSNode(object):
 
     @property
     def child_U(self):
-        return (FLAGS.c_puct * math.sqrt(1 + self.N) *
+        return (FLAGS.c_puct * math.sqrt(max(1, self.N - 1)) *
                 self.child_prior / (1 + self.child_N))
 
     @property
@@ -136,15 +135,14 @@ class MCTSNode(object):
         current = self
         pass_move = go.N * go.N
         while True:
-            current.N += 1
             # if a node has never been evaluated, we have no basis to select a child.
             if not current.is_expanded:
                 break
             # HACK: if last move was a pass, always investigate double-pass first
             # to avoid situations where we auto-lose by passing too early.
-            if (current.position.recent
-                and current.position.recent[-1].move is None
-                    and current.child_N[pass_move] == 0):
+            if (current.position.recent and
+                current.position.recent[-1].move is None and
+                    current.child_N[pass_move] == 0):
                 current = current.maybe_add_child(pass_move)
                 continue
 
@@ -185,28 +183,15 @@ class MCTSNode(object):
             return
         self.parent.revert_virtual_loss(up_to)
 
-    def revert_visits(self, up_to):
-        """Revert visit increments.
-
-        Sometimes, repeated calls to select_leaf return the same node.
-        This is rare and we're okay with the wasted computation to evaluate
-        the position multiple times by the dual_net. But select_leaf has the
-        side effect of incrementing visit counts. Since we want the value to
-        only count once for the repeatedly selected node, we also have to
-        revert the incremented visit counts.
-        """
-        self.N -= 1
-        if self.parent is None or self is up_to:
-            return
-        self.parent.revert_visits(up_to)
-
     def incorporate_results(self, move_probabilities, value, up_to):
         assert move_probabilities.shape == (go.N * go.N + 1,)
         # A finished game should not be going through this code path - should
         # directly call backup_value() on the result of the game.
         assert not self.position.is_game_over()
+
+        # If a node was picked multiple times (despite vlosses), we shouldn't
+        # expand it more than once.
         if self.is_expanded:
-            self.revert_visits(up_to=up_to)
             return
         self.is_expanded = True
 
@@ -236,6 +221,7 @@ class MCTSNode(object):
             value: the value to be propagated (1 = black wins, -1 = white wins)
             up_to: the node to propagate until.
         """
+        self.N += 1
         self.W += value
         if self.parent is None or self is up_to:
             return
@@ -264,43 +250,41 @@ class MCTSNode(object):
         probs = self.child_N
         if squash:
             probs = probs ** .98
+        sum_probs = np.sum(probs)
+        if sum_probs == 0:
+            return probs
         return probs / np.sum(probs)
+
+    def best_child(self):
+        # Sort by child_N tie break with action score.
+        return np.argmax(self.child_N + self.child_action_score / 10000)
 
     def most_visited_path_nodes(self):
         node = self
         output = []
         while node.children:
-            next_kid = np.argmax(node.child_N)
-            node = node.children.get(next_kid)
-            if node is None:
-                break
+            node = node.children.get(node.best_child())
+            assert node is not None
             output.append(node)
         return output
 
     def most_visited_path(self):
-        node = self
         output = []
-        while node.children:
-            next_kid = np.argmax(node.child_N)
-            node = node.children.get(next_kid)
-            if node is None:
-                output.append("GAME END")
-                break
-            output.append("%s (%d) ==> " % (coords.to_kgs(
-                                            coords.from_flat(node.fmove)),
-                                            node.N))
+        node = self
+        for node in self.most_visited_path_nodes():
+            output.append("%s (%d) ==> " % (
+                coords.to_kgs(coords.from_flat(node.fmove)), node.N))
+
         output.append("Q: {:.5f}\n".format(node.Q))
         return ''.join(output)
 
     def mvp_gg(self):
         """ Returns most visited path in go-gui VAR format e.g. 'b r3 w c17..."""
-        node = self
         output = []
-        while node.children and max(node.child_N) > 1:
-            next_kid = np.argmax(node.child_N)
-            node = node.children[next_kid]
-            output.append("%s" % coords.to_kgs(
-                coords.from_flat(node.fmove)))
+        for node in self.most_visited_path_nodes():
+            if max(node.child_N) <= 1:
+                break
+            output.append(coords.to_kgs(coords.from_flat(node.fmove)))
         return ' '.join(output)
 
     def describe(self):

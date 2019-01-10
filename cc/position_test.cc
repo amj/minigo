@@ -21,6 +21,7 @@
 
 #include "absl/strings/ascii.h"
 #include "cc/constants.h"
+#include "cc/random.h"
 #include "cc/test_utils.h"
 #include "gtest/gtest.h"
 
@@ -159,7 +160,7 @@ TEST(PositionTest, TestCaptureStone) {
 
   board.PlayMove("J2", Color::kWhite);
 
-  std::array<int, 2> expected_captures = {0, 1};
+  std::array<int, 2> expected_captures = {{0, 1}};
   EXPECT_EQ(expected_captures, board.num_captures());
 
   EXPECT_EQ(CleanBoardString(R"(
@@ -190,7 +191,7 @@ TEST(PositionTest, TestCaptureMany1) {
 
   board.PlayMove("E6", Color::kBlack);
 
-  std::array<int, 2> expected_captures = {2, 0};
+  std::array<int, 2> expected_captures = {{2, 0}};
   EXPECT_EQ(expected_captures, board.num_captures());
 
   EXPECT_EQ(CleanBoardString(R"(
@@ -217,7 +218,7 @@ TEST(PositionTest, TestCaptureMany2) {
 
   board.PlayMove("C7", Color::kBlack);
 
-  std::array<int, 2> expected_captures = {4, 0};
+  std::array<int, 2> expected_captures = {{4, 0}};
   EXPECT_EQ(expected_captures, board.num_captures());
 
   EXPECT_EQ(CleanBoardString(R"(
@@ -245,7 +246,7 @@ TEST(PositionTest, TestCaptureMultipleGroups) {
 
   board.PlayMove("A9", Color::kBlack);
 
-  std::array<int, 2> expected_captures = {2, 0};
+  std::array<int, 2> expected_captures = {{2, 0}};
   EXPECT_EQ(expected_captures, board.num_captures());
 
   EXPECT_EQ(CleanBoardString(R"(
@@ -296,7 +297,7 @@ TEST(PositionTest, TestSameOpponentGroupNeighboringTwice) {
   EXPECT_EQ(2, black_group.num_liberties);
 }
 
-TEST(PositionTest, IsMoveSuicidal) {
+TEST(PositionTest, TestSuicidalMovesAreIllegal) {
   auto board = TestablePosition(R"(
       ...O.O...
       ....O....
@@ -309,11 +310,11 @@ TEST(PositionTest, IsMoveSuicidal) {
       .....XOO.)");
   std::vector<std::string> suicidal_moves = {"E9", "H5", "E3"};
   for (const auto& c : suicidal_moves) {
-    EXPECT_TRUE(board.IsMoveSuicidal(c, Color::kBlack));
+    EXPECT_EQ(Position::MoveType::kIllegal, board.ClassifyMove(c));
   }
   std::vector<std::string> nonsuicidal_moves = {"B5", "J1", "A9"};
   for (const auto& c : nonsuicidal_moves) {
-    EXPECT_FALSE(board.IsMoveSuicidal(c, Color::kBlack));
+    EXPECT_NE(Position::MoveType::kIllegal, board.ClassifyMove(c));
   }
 }
 
@@ -432,7 +433,6 @@ TEST(PositionTest, PlayGame) {
   TestablePosition board("");
   for (const auto& move : moves) {
     board.PlayMove(move);
-    // std::cout << board.ToPrettyString() << std::endl;
   }
 
   EXPECT_EQ(CleanBoardString(R"(
@@ -447,9 +447,33 @@ TEST(PositionTest, PlayGame) {
       XXXXXXXXX)"),
             board.ToSimpleString());
 
-  std::array<int, 2> expected_captures = {10, 2};
+  std::array<int, 2> expected_captures = {{10, 2}};
   EXPECT_EQ(expected_captures, board.num_captures());
   EXPECT_EQ(-0.5, board.CalculateScore(kDefaultKomi));
+}
+
+// A regression test for a bug where Position::RemoveGroup didn't recycle the
+// removed group's ID. The test plays repeatedly plays a random legal move (or
+// passes if the player has no legal moves). Under these conditions, the game
+// will never end.
+TEST(PositionTest, PlayRandomLegalMoves) {
+  Random rnd(983465983);
+  TestablePosition position("");
+
+  for (int i = 0; i < 10000; ++i) {
+    std::vector<Coord> legal_moves;
+    for (int c = 0; c < kN * kN; ++c) {
+      if (position.ClassifyMove(c) != Position::MoveType::kIllegal) {
+        legal_moves.push_back(c);
+      }
+    }
+    if (!legal_moves.empty()) {
+      auto c = legal_moves[rnd.UniformInt(0, legal_moves.size() - 1)];
+      position.PlayMove(c, position.to_play());
+    } else {
+      position.PlayMove(Coord::kPass, position.to_play());
+    }
+  }
 }
 
 }  // namespace

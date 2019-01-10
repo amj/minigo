@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import unittest
 import go
 from sgf_wrapper import replay_sgf, translate_sgf_move, make_sgf
-import unittest
 
 import coords
 from tests import test_utils
@@ -62,8 +62,8 @@ class TestSgfWrapper(test_utils.MiniGoUnitTest):
     def test_sgf_props(self):
         sgf_replayer = replay_sgf(CHINESE_HANDICAP_SGF)
         initial = next(sgf_replayer)
-        self.assertEqual(initial.result, go.BLACK)
-        self.assertEqual(initial.position.komi, 5.5)
+        self.assertEqual(go.BLACK, initial.result)
+        self.assertEqual(5.5, initial.position.komi)
 
     def test_japanese_handicap_handling(self):
         intermediate_board = test_utils.load_board('''

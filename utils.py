@@ -24,12 +24,17 @@ import sys
 import time
 
 
+def dbg(*objects, file=sys.stderr, flush=True, **kwargs):
+    "Helper function to print to stderr and flush"
+    print(*objects, file=file, flush=flush, **kwargs)
+
+
 def ensure_dir_exists(directory):
     "Creates local directories if they don't exist."
     if directory.startswith('gs://'):
         return
     if not os.path.exists(directory):
-        print("Making dir {}".format(directory), file=sys.stderr)
+        dbg("Making dir {}".format(directory))
     os.makedirs(directory, exist_ok=True)
 
 
@@ -37,7 +42,7 @@ def parse_game_result(result):
     "Parse an SGF result string into value target."
     if re.match(r'[bB]\+', result):
         return 1
-    elif re.match(r'[wW]\+', result):
+    if re.match(r'[wW]\+', result):
         return -1
     return 0
 

@@ -31,10 +31,7 @@ export SERVICE_ACCOUNT_KEY_LOCATION=${SERVICE_ACCOUNT_KEY_LOCATION:-"/tmp/${SERV
 
 # Constants for docker container creation
 export VERSION_TAG=${VERSION_TAG:-"0.16"}
-export GPU_PLAYER_CONTAINER=${GPU_PLAYER_CONTAINER:-"minigo-gpu-player"}
-export GPU_EVALUATOR_CONTAINER=${GPU_EVALUATOR_CONTAINER:-"minigo-gpu-evaluator"}
-export CPU_PLAYER_CONTAINER=${CPU_PLAYER_CONTAINER:-"minigo-player"}
-export CC_PLAYER_CONTAINER=${CC_PLAYER_CONTAINER:-"minigo-cc-player"}
+export EVAL_VERSION_TAG=${EVAL_VERSION_TAG:-"latest"}
 export MINIGUI_PY_CPU_CONTAINER=${MINIGUI_PY_CPU_CONTAINER:-"minigui-py-cpu-v2"}
 
 # Bucket names live in a single global namespace
@@ -48,3 +45,11 @@ export BUCKET_NAME=${BUCKET_NAME:-"${PROJECT}-minigo-v5-${BOARD_SIZE}"}
 # For more about locations, see
 # https://cloud.google.com/storage/docs/bucket-locations
 export BUCKET_LOCATION=${BUCKET_LOCATION:-"asia-east1"}
+
+# Bigtable resources
+export CBT_INSTANCE=${CBT_INSTANCE:-"minigo-instance"}
+export CBT_ZONE=${CBT_ZONE:-"us-central1-b"}
+export CBT_TABLE=${CBT_TABLE:-"games"}
+
+# Needed for Bigtable clients or any gRPC code running on a GCE VM
+export GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/etc/ssl/certs/ca-certificates.crt

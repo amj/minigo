@@ -1,3 +1,17 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Plot the l2 cost of various tensors over a training run.
 
 Example usage:
@@ -18,7 +32,7 @@ from collections import defaultdict
 from tqdm import tqdm
 
 import dual_net
-import fsdb
+from rl_loop import fsdb
 import oneoff_utils
 
 flags.DEFINE_string("plot_dir", "data/l2_cost", "Where to save the plots.")
@@ -76,7 +90,7 @@ def dual_net_list(model):
     print("Dual Net will calculate L2 cost over these variables")
     with dual.sess.graph.as_default():
         var_names = [v.name for v in tf.trainable_variables()]
-        _ = reduce_and_print_vars(var_names)
+        reduce_and_print_vars(var_names)
     print()
 
 

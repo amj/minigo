@@ -20,31 +20,32 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source ${SCRIPT_DIR}/common.sh
 source ${SCRIPT_DIR}/utils.sh
 
-export NUM_NODES=2
-export CLUSTER_NAME=minigo-tpu
-ZONE=us-central1-f
+export NUM_NODES=128
 
 echo "TPU Cluster Creation"
 echo "--------------------------------------"
 echo "Using Project:      ${PROJECT}"
 echo "Using Zone:         ${ZONE}"
 echo "Using Cluster Name: ${CLUSTER_NAME}"
+echo "Service account:    ${SERVICE_ACCOUNT}"
 
 echo "Overriding num nodes to: $NUM_NODES"
 
 check_gcloud_exists
 
+#gcloud compute networks create $CLUSTER_NAME
+
 # Create a Kubernetes cluster. This setup is designed for creating large clusters.
 gcloud beta container clusters create \
     --project=$PROJECT \
     --zone=$ZONE \
-    --cluster-version=1.10 \
+    --cluster-version=1.11 \
     --scopes=cloud-platform \
-    --create-subnetwork name=tpu-cluster,range=/18 \
+    --network=$CLUSTER_NAME \
     --enable-ip-alias \
     --enable-tpu \
     --machine-type n1-standard-16 \
-    --disk-size 60 \
+    --disk-size 45 \
     --num-nodes $NUM_NODES \
     $CLUSTER_NAME
     #--tpu-ipv4-cidr=/18 \

@@ -15,7 +15,7 @@
 #ifndef CC_MOVE_H_
 #define CC_MOVE_H_
 
-#include <iostream>
+#include <string>
 
 #include "cc/color.h"
 #include "cc/coord.h"
@@ -28,6 +28,8 @@ struct Move {
 
   Color color = Color::kEmpty;
   Coord c = Coord::kInvalid;
+
+  std::string ToSgf() const;
 
   bool operator==(const Move& other) const {
     return color == other.color && c == other.c;

@@ -14,21 +14,20 @@
 
 import os
 import random
-import sys
 import time
 
 from absl import flags
-import numpy as np
 
 import coords
 import go
 import mcts
 import sgf_wrapper
-
+from utils import dbg
 from player_interface import MCTSPlayerInterface
 
+
 flags.DEFINE_integer('softpick_move_cutoff', (go.N * go.N // 12) // 2 * 2,
-                     'The move number (<=) up to which moves are softpicked from MCTS visits.')
+                     'The move number (<) up to which moves are softpicked from MCTS visits.')
 # Ensure that both white and black have an equal number of softpicked moves.
 flags.register_validator('softpick_move_cutoff', lambda x: x % 2 == 0)
 
@@ -37,7 +36,7 @@ flags.DEFINE_float('resign_threshold', -0.9,
                    'A threshold of -1 implies resign is disabled.')
 flags.register_validator('resign_threshold', lambda x: -1 <= x < 0)
 
-flags.DEFINE_integer('num_readouts', 800,
+flags.DEFINE_integer('num_readouts', 800 if go.N == 19 else 200,
                      'Number of searches to add to the MCTS search tree before playing a move.')
 flags.register_validator('num_readouts', lambda x: x > 0)
 
@@ -45,10 +44,14 @@ flags.DEFINE_integer('parallel_readouts', 8,
                      'Number of searches to execute in parallel. This is also the batch size'
                      'for neural network evaluation.')
 
+# this should be called "verbosity" but flag name conflicts with absl.logging.
+# Should fix this by overhauling this logging system with appropriate logging.info/debug.
+flags.DEFINE_integer('verbose', 1, 'How much debug info to print.')
+
 FLAGS = flags.FLAGS
 
 
-def time_recommendation(move_num, seconds_per_move=5, time_limit=15*60,
+def time_recommendation(move_num, seconds_per_move=5, time_limit=15 * 60,
                         decay_factor=0.98):
     '''Given the current move number and the 'desired' seconds per move, return
     how much time should actually be used. This is intended specifically for
@@ -79,22 +82,20 @@ def time_recommendation(move_num, seconds_per_move=5, time_limit=15*60,
 
 class MCTSPlayer(MCTSPlayerInterface):
     def __init__(self, network, seconds_per_move=5, num_readouts=0,
-                 resign_threshold=None, verbosity=0, two_player_mode=False,
+                 resign_threshold=None, two_player_mode=False,
                  timed_match=False):
         self.network = network
         self.seconds_per_move = seconds_per_move
         self.num_readouts = num_readouts or FLAGS.num_readouts
-        self.verbosity = verbosity
+        self.verbosity = FLAGS.verbose
         self.two_player_mode = two_player_mode
         if two_player_mode:
             self.temp_threshold = -1
         else:
             self.temp_threshold = FLAGS.softpick_move_cutoff
-        self.comments = []
-        self.searches_pi = []
+
+        self.initialize_game()
         self.root = None
-        self.result = 0
-        self.result_string = None
         self.resign_threshold = resign_threshold or FLAGS.resign_threshold
         self.timed_match = timed_match
         assert (self.timed_match and self.seconds_per_move >
@@ -134,15 +135,15 @@ class MCTSPlayer(MCTSPlayerInterface):
             while self.root.N < current_readouts + self.num_readouts:
                 self.tree_search()
             if self.verbosity > 0:
-                print("%d: Searched %d times in %s seconds\n\n" % (
-                    position.n, self.num_readouts, time.time() - start), file=sys.stderr)
+                dbg("%d: Searched %d times in %.2f seconds\n\n" % (
+                    position.n, self.num_readouts, time.time() - start))
 
-        # print some stats on anything with probability > 1%
+        # print some stats on moves considered.
         if self.verbosity > 2:
-            print(self.root.describe(), file=sys.stderr)
-            print('\n\n', file=sys.stderr)
+            dbg(self.root.describe())
+            dbg('\n\n')
         if self.verbosity > 3:
-            print(self.root.position, file=sys.stderr)
+            dbg(self.root.position)
 
         return self.pick_move()
 
@@ -155,17 +156,18 @@ class MCTSPlayer(MCTSPlayerInterface):
             `inject_noise` calls.
         '''
         if not self.two_player_mode:
-            self.searches_pi.append(
-                self.root.children_as_pi(self.root.position.n <= self.temp_threshold))
+            self.searches_pi.append(self.root.children_as_pi(
+                self.root.position.n < self.temp_threshold))
         self.comments.append(self.root.describe())
         try:
             self.root = self.root.maybe_add_child(coords.to_flat(c))
         except go.IllegalMove:
-            print("Illegal move")
+            dbg("Illegal move")
             if not self.two_player_mode:
                 self.searches_pi.pop()
             self.comments.pop()
-            return False
+            raise
+
         self.position = self.root.position  # for showboard
         del self.root.parent.children
         return True  # GTP requires positive result.
@@ -176,9 +178,9 @@ class MCTSPlayer(MCTSPlayerInterface):
         Highest N is most robust indicator. In the early stage of the game, pick
         a move weighted by visit count; later on, pick the absolute max.'''
         if self.root.position.n >= self.temp_threshold:
-            fcoord = np.argmax(self.root.child_N)
+            fcoord = self.root.best_child()
         else:
-            cdf = self.root.child_N.cumsum()
+            cdf = self.root.children_as_pi(squash=True).cumsum()
             cdf /= cdf[-2]  # Prevents passing via softpick.
             selection = random.random()
             fcoord = cdf.searchsorted(selection)
@@ -187,14 +189,14 @@ class MCTSPlayer(MCTSPlayerInterface):
 
     def tree_search(self, parallel_readouts=None):
         if parallel_readouts is None:
-            parallel_readouts = FLAGS.parallel_readouts
+            parallel_readouts = min(FLAGS.parallel_readouts, self.num_readouts)
         leaves = []
         failsafe = 0
         while len(leaves) < parallel_readouts and failsafe < parallel_readouts * 2:
             failsafe += 1
             leaf = self.root.select_leaf()
             if self.verbosity >= 4:
-                print(self.show_path_to_root(leaf))
+                dbg(self.show_path_to_root(leaf))
             # if game is over, override the value estimate with the true score
             if leaf.is_done():
                 value = 1 if leaf.position.score() > 0 else -1
@@ -216,8 +218,10 @@ class MCTSPlayer(MCTSPlayerInterface):
         if len(pos.recent) == 0:
             return
 
-        def fmt(move): return "{}-{}".format('b' if move.color == 1 else 'w',
-                                             coords.to_kgs(move.move))
+        def fmt(move):
+            return "{}-{}".format('b' if move.color == go.BLACK else 'w',
+                                  coords.to_kgs(move.move))
+
         path = " ".join(fmt(move) for move in pos.recent[-diff:])
         if node.position.n >= FLAGS.max_game_length:
             path += " (depth cutoff reached) %0.1f" % node.position.score()

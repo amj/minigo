@@ -23,7 +23,7 @@ from absl import flags
 from tensorflow.python.framework import meta_graph
 
 import dual_net
-import fsdb
+from rl_loop import fsdb
 from utils import ensure_dir_exists
 
 flags.DEFINE_string("data_dir", "data/swa/", "Where to save swa models")
@@ -52,7 +52,7 @@ def swa():
 
     # construct the graph
     features, labels = dual_net.get_inference_input()
-    dual_net.model_fn(features, labels, tf.estimator.ModeKeys.PREDICT)
+    dual_net.model_fn(features, labels, tf.estimator.ModeKeys.PREDICT, FLAGS.flag_values_dict())
 
     # restore all saved weights
     meta_graph_def = meta_graph.read_meta_graph_file(model_paths[0] + '.meta')

@@ -16,12 +16,12 @@
 #define CC_COORD_H_
 
 #include <cstdint>
-#include <iostream>
+#include <ostream>
 #include <string>
 
 #include "absl/strings/string_view.h"
-#include "cc/check.h"
 #include "cc/constants.h"
+#include "cc/logging.h"
 
 namespace minigo {
 
@@ -32,7 +32,7 @@ class Coord {
   static constexpr uint16_t kPass = kN * kN;
   static constexpr uint16_t kResign = kPass + 1;
   static constexpr uint16_t kInvalid = 0xffff;
-  static constexpr char kKgsColumns[] = "ABCDEFGHJKLMNOPQRST";
+  static const char kKgsColumns[20];
 
   Coord(uint16_t value) : value_(value) {}  // NOLINT(runtime/explicit)
 

@@ -1,3 +1,17 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 Used to plot the accuracy of the policy and value networks in
 predicting professional game moves and results over the course
@@ -16,19 +30,16 @@ python training_curve.py --min_year=2005
 import sys
 sys.path.insert(0, '.')
 
-import go
 import os.path
 
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import tensorflow as tf
 from absl import app, flags
 from tqdm import tqdm
 
 import coords
-import fsdb
-from gtp_wrapper import MCTSPlayer
+from rl_loop import fsdb
 import oneoff_utils
 
 flags.DEFINE_string("sgf_dir", None, "sgf database")
@@ -55,7 +66,7 @@ def batch_run_many(player, positions, batch_size=100):
     prob_list = []
     value_list = []
     for idx in range(0, len(positions), batch_size):
-        probs, values = player.network.run_many(positions[idx:idx+batch_size])
+        probs, values = player.network.run_many(positions[idx:idx + batch_size])
         prob_list.append(probs)
         value_list.append(values)
     return np.concatenate(prob_list, axis=0), np.concatenate(value_list, axis=0)
@@ -66,7 +77,7 @@ def eval_player(player, positions, moves, results):
     policy_moves = [coords.from_flat(c) for c in np.argmax(probs, axis=1)]
     top_move_agree = [moves[idx] == policy_moves[idx]
                       for idx in range(len(moves))]
-    square_err = (values - results)**2/4
+    square_err = (values - results) ** 2 / 4
     return top_move_agree, square_err
 
 
@@ -79,11 +90,11 @@ def sample_positions_from_games(sgf_files, num_positions=1):
     fail_count = 0
     for path in tqdm(sgf_files, desc="loading sgfs", unit="games"):
         try:
-            positions, moves, results = oneoff_utils.parse_sgf(path)
+            positions, moves, results = oneoff_utils.parse_sgf_to_examples(path)
         except KeyboardInterrupt:
             raise
         except Exception as e:
-            print ("Parse exception:", e)
+            print("Parse exception:", e)
             fail_count += 1
             continue
 
@@ -160,5 +171,4 @@ def main(unusedargv):
 
 
 if __name__ == "__main__":
-    remaining_argv = flags.FLAGS(sys.argv, known_only=True)
-    main(remaining_argv)
+    app.run(main)
