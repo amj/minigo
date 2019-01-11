@@ -27,7 +27,7 @@ from rl_loop import fsdb
 
 from ratings import ratings
 
-MAX_TASKS = 300  # Keep < 500, or k8s may not track completions accurately.
+MAX_TASKS = 250  # Keep < 500, or k8s may not track completions accurately.
 
 
 def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
@@ -190,9 +190,11 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
                 time.sleep(1)
 
             else:
-                print("{}\t{} tasks outstanding. ({} jobs, {} pairs to be scheduled)".format(
-                      time.strftime("%I:%M:%S %p"), tasks,
-                      len(r.items), len(desired_pairs)))
+                print("{}\t {} finished / {} requested. "
+                      "({} jobs, {} pairs to be scheduled)".format(
+                      time.strftime("%I:%M:%S %p"),
+                      sum([i.status.succeeded or 0 for i in r.items]),
+                      tasks, len(r.items), len(desired_pairs)))
                 time.sleep(60)
     except:
         print("Unfinished pairs:")
