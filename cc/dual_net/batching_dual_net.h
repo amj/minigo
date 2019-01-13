@@ -3,12 +3,12 @@
 
 #include <memory>
 
-#include "cc/dual_net/factory.h"
+#include "cc/dual_net/dual_net.h"
 
 namespace minigo {
 
-std::unique_ptr<DualNetFactory> NewBatchingFactory(
-    std::unique_ptr<DualNet> dual_net);
+std::unique_ptr<DualNetFactory> NewBatchingDualNetFactory(
+    std::unique_ptr<DualNetFactory> impl);
 
 }  // namespace minigo
 

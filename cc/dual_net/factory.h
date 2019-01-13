@@ -16,22 +16,13 @@
 #define MINIGO_CC_DUAL_NET_FACTORY_H_
 
 #include <memory>
-#include <string>
-#include <utility>
 
 #include "cc/dual_net/dual_net.h"
 
 namespace minigo {
 
-class DualNetFactory {
- public:
-  virtual ~DualNetFactory();
-
-  virtual std::unique_ptr<DualNet> New() = 0;
-};
-
-std::unique_ptr<DualNetFactory> NewDualNetFactory(
-    const std::string& model_path);
+// Creates one of the DualNetFactory implementations based on the engine flags.
+std::unique_ptr<DualNetFactory> NewDualNetFactory();
 
 }  // namespace minigo
 

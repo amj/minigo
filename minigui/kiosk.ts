@@ -12,39 +12,42 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {App, GameStateMsg} from './app'
+import {App} from './app'
 import {Board} from './board'
-import {heatMapN, heatMapDq} from './heat_map'
 import * as lyr from './layer'
 import {Log} from './log'
+import {Position} from './position'
 import {toPrettyResult} from './util'
 import {WinrateGraph} from './winrate_graph'
 
 class KioskApp extends App {
   private winrateGraph = new WinrateGraph('winrate-graph');
   private log = new Log('log');
+  private boards: Board[] = [];
 
   constructor() {
     super();
 
     this.connect().then(() => {
-      let mainBoard = new Board(
-        'main-board', this.size,
-        [lyr.Label, lyr.BoardStones, [lyr.Variation, 'pv'], lyr.Annotations]);
-
-      let searchBoard = new Board(
-        'search-board', this.size,
-        [[lyr.Caption, 'search'], lyr.BoardStones, [lyr.Variation, 'search']]);
-
-      let nBoard = new Board(
-        'n-board', this.size,
-        [[lyr.Caption, 'N'], [lyr.HeatMap, 'n', heatMapN], lyr.BoardStones]);
-
-      let dqBoard = new Board(
-        'dq-board', this.size,
-        [[lyr.Caption, 'ΔQ'], [lyr.HeatMap, 'dq', heatMapDq], lyr.BoardStones]);
-
-      this.init([mainBoard, searchBoard, nBoard, dqBoard]);
+      this.boards = [
+        new Board('main-board', this.rootPosition, [
+            new lyr.Label(),
+            new lyr.BoardStones(),
+            new lyr.Variation('pv'),
+            new lyr.Annotations()]),
+        new Board('search-board', this.rootPosition, [
+            new lyr.Caption('search'),
+            new lyr.BoardStones(),
+            new lyr.Variation('search')]),
+        new Board('n-board', this.rootPosition, [
+            new lyr.Caption('N'),
+            new lyr.VisitCountHeatMap(),
+            new lyr.BoardStones()]),
+        new Board('dq-board', this.rootPosition, [
+            new lyr.Caption('ΔQ'),
+            new lyr.DeltaQHeatMap(),
+            new lyr.BoardStones()]),
+      ];
 
       this.gtp.onText((line: string) => { this.log.log(line, 'log-cmd'); });
       this.newGame();
@@ -54,20 +57,31 @@ class KioskApp extends App {
   protected newGame() {
     super.newGame();
     this.log.clear();
-    this.winrateGraph.clear();
+    this.winrateGraph.newGame(this.rootPosition);
   }
 
-  protected onGameState(msg: GameStateMsg) {
-    super.onGameState(msg);
-    this.log.scroll();
-    this.winrateGraph.setWinrate(msg.moveNum, msg.q);
+  protected onPositionUpdate(position: Position, update: Position.Update) {
+    if (position != this.activePosition) {
+      return;
+    }
+    for (let board of this.boards) {
+      board.update(update);
+    }
+    this.winrateGraph.update(position);
+  }
 
-    if (this.gameOver) {
+  protected onNewPosition(position: Position) {
+    this.activePosition = position
+    for (let board of this.boards) {
+      board.setPosition(position);
+    }
+    this.winrateGraph.update(position);
+    this.log.scroll();
+
+    if (this.activePosition.gameOver) {
       window.setTimeout(() => { this.newGame(); }, 3000);
     } else {
-      this.gtp.send('genmove').then((move: string) => {
-        this.gtp.send('gamestate');
-      });
+      this.gtp.send('genmove');
     }
   }
 

@@ -17,8 +17,6 @@
 #include "cc/color.h"
 #include "cc/constants.h"
 
-DEFINE_int32(batch_size, 256, "Inference batch size.");
-
 namespace minigo {
 
 constexpr int DualNet::kNumStoneFeatures;
@@ -67,5 +65,19 @@ void DualNet::SetFeatures(absl::Span<const Position::Stones* const> history,
 }
 
 DualNet::~DualNet() = default;
+
+DualNet::InputLayout DualNet::GetInputLayout() const {
+  return InputLayout::kNHWC;
+}
+
+void DualNet::Reserve(size_t) {}
+
+DualNetFactory::~DualNetFactory() = default;
+
+int DualNetFactory::GetBufferCount() const { return 1; }
+
+void DualNetFactory::StartGame(DualNet* black, DualNet* white) {}
+
+void DualNetFactory::EndGame(DualNet* black, DualNet* white) {}
 
 }  // namespace minigo

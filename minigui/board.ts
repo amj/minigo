@@ -12,26 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {BoardSize, COL_LABELS, Color, Coord, Move, N, Nullable, Point} from './base'
+import {Grid, Layer} from './layer'
+import {Position} from './position'
 import {getElement, pixelRatio} from './util'
 import {View} from './view'
-import {DataObj, Grid, Layer} from './layer'
-import {BoardSize, COL_LABELS, Color, Coord, Move, Nullable, Point} from './base'
-
-namespace Annotation {
-  export enum Shape {
-    Dot,
-    Triangle,
-  }
-}
-
-interface Annotation {
-  p: Point;
-  shape: Annotation.Shape;
-  color: string;
-}
 
 class Board extends View {
-  toPlay = Color.Black;
   stones: Color[] = [];
   ctx: CanvasRenderingContext2D;
 
@@ -41,10 +28,9 @@ class Board extends View {
   stoneRadius: number;
   elem: HTMLElement;
 
-  protected layers: Layer[];
+  protected layers: Layer[] = [];
 
-  constructor(parent: HTMLElement | string, public size: BoardSize,
-              layerDescs: any[]) {
+  constructor(parent: HTMLElement | string, public position: Position, layers: Layer[]) {
     super();
 
     if (typeof(parent) == 'string') {
@@ -53,10 +39,6 @@ class Board extends View {
     this.elem = parent;
 
     this.backgroundColor = '#db6';
-
-    for (let i = 0; i < this.size * this.size; ++i) {
-      this.stones.push(Color.Empty);
-    }
 
     let canvas = document.createElement('canvas');
     this.ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -68,8 +50,8 @@ class Board extends View {
     });
     this.resizeCanvas();
 
-    this.layers = [new Grid(this)];
-    this.addLayers(layerDescs);
+    this.addLayer(new Grid());
+    this.addLayers(layers);
   }
 
   private resizeCanvas() {
@@ -80,23 +62,27 @@ class Board extends View {
     canvas.height = pr * (parent.offsetHeight);
     canvas.style.width = `${parent.offsetWidth}px`;
     canvas.style.height = `${parent.offsetHeight}px`;
-    this.pointW = this.ctx.canvas.width / (this.size + 1);
-    this.pointH = this.ctx.canvas.height / (this.size + 1);
-    this.stoneRadius = Math.min(this.pointW, this.pointH);
+    this.pointW = this.ctx.canvas.width / (N + 1);
+    this.pointH = this.ctx.canvas.height / (N + 1);
+    this.stoneRadius = 0.96 * Math.min(this.pointW, this.pointH) / 2;
   }
 
-  addLayers(descs: any[]) {
-    for (let desc of descs) {
-      let layer: Layer;
-      if (Array.isArray(desc)) {
-        let ctor= desc[0];
-        let args = desc.slice(1);
-        layer = new ctor(this, ...args);
-      } else {
-        let ctor= desc;
-        layer = new ctor(this);
-      }
-      this.layers.push(layer);
+  newGame(rootPosition: Position) {
+    this.position = rootPosition;
+    for (let layer of this.layers) {
+      layer.clear();
+    }
+    this.draw();
+  }
+
+  addLayer(layer: Layer) {
+    this.layers.push(layer);
+    layer.addToBoard(this);
+  }
+
+  addLayers(layers: Layer[]) {
+    for (let layer of layers) {
+      this.addLayer(layer);
     }
   }
 
@@ -104,20 +90,30 @@ class Board extends View {
   // Board layers that are derived from DataLayer will look in the state object
   // for a named property. If that property exists, the layer will update its
   // internal state from it.
-  update(state: any) {
-    if (state.toPlay !== undefined) {
-      this.toPlay = state.toPlay as Color;
+  setPosition(position: Position) {
+    if (this.position == position) {
+      return;
     }
-    if (state.stones !== undefined) {
-      this.stones = state.stones as Color[];
-    }
-    let anything_changed = false;
+
+    this.position = position;
+    let allProps = new Set<string>(Object.keys(position));
     for (let layer of this.layers) {
-      if (layer.update(state)) {
-        anything_changed = true;
+      layer.update(allProps);
+    }
+    this.draw();
+  }
+
+  update(update: Position | Position.Update) {
+    let anythingChanged = false;
+    let keys = new Set<string>(Object.keys(update));
+    for (let layer of this.layers) {
+      if (layer.update(keys)) {
+        anythingChanged = true;
       }
     }
-    return anything_changed;
+    if (anythingChanged) {
+      this.draw();
+    }
   }
 
   drawImpl() {
@@ -125,12 +121,14 @@ class Board extends View {
     ctx.fillStyle = this.backgroundColor;
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     for (let layer of this.layers) {
-      layer.draw();
+      if (layer.show) {
+        layer.draw();
+      }
     }
   }
 
   getStone(p: Point) {
-    return this.stones[p.row * this.size + p.col];
+    return this.position.stones[p.row * N + p.col];
   }
 
   canvasToBoard(x: number, y: number, threshold?: number): Nullable<Point> {
@@ -139,13 +137,12 @@ class Board extends View {
     y *= pr;
 
     let canvas = this.ctx.canvas;
-    let size = this.size;
 
-    y = y * (size + 1) / canvas.height - 0.5;
-    x = x * (size + 1) / canvas.width - 0.5;
+    y = y * (N + 1) / canvas.height - 0.5;
+    x = x * (N + 1) / canvas.width - 0.5;
     let row = Math.floor(y);
     let col = Math.floor(x);
-    if (row < 0 || row >= size || col < 0 || col >= size) {
+    if (row < 0 || row >= N || col < 0 || col >= N) {
       return null;
     }
 
@@ -163,11 +160,10 @@ class Board extends View {
 
   boardToCanvas(row: number, col: number): Coord {
     let canvas = this.ctx.canvas;
-    let size = this.size;
 
     return {
-      x: canvas.width * (col + 1.0) / (size + 1),
-      y: canvas.height * (row + 1.0) / (size + 1)
+      x: canvas.width * (col + 1.0) / (N + 1),
+      y: canvas.height * (row + 1.0) / (N + 1)
     };
   }
 
@@ -188,11 +184,11 @@ class Board extends View {
 
     ctx.fillStyle = this.stoneFill(color, alpha);
 
-    let r = 0.48 * this.stoneRadius;
+    let r = this.stoneRadius;
     for (let p of ps) {
       let c = this.boardToCanvas(p.row, p.col);
       ctx.beginPath();
-      ctx.translate(c.x, c.y);
+      ctx.translate(c.x + 0.5, c.y + 0.5);
       ctx.arc(0, 0, r, 0, 2 * Math.PI);
       ctx.fill();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -206,15 +202,15 @@ class Board extends View {
   private stoneFill(color: Color, alpha: number) {
     let grad: CanvasGradient;
     if (color == Color.Black) {
-      let ofs = -0.25 * this.stoneRadius;
+      let ofs = -0.5 * this.stoneRadius;
       grad = this.ctx.createRadialGradient(
-          ofs, ofs, 0, ofs, ofs, this.stoneRadius);
+          ofs, ofs, 0, ofs, ofs, 2 * this.stoneRadius);
       grad.addColorStop(0, `rgba(68, 68, 68, ${alpha})`);
       grad.addColorStop(1, `rgba(16, 16, 16, ${alpha})`);
     } else if (color == Color.White) {
-      let ofs = -0.1 * this.stoneRadius;
+      let ofs = -0.2 * this.stoneRadius;
       grad = this.ctx.createRadialGradient(
-          ofs, ofs, 0, ofs, ofs, 0.6 * this.stoneRadius);
+          ofs, ofs, 0, ofs, ofs, 1.2 * this.stoneRadius);
       grad.addColorStop(0.4, `rgba(255, 255, 255, ${alpha})`);
       grad.addColorStop(1, `rgba(204, 204, 204, ${alpha})`);
     } else {
@@ -227,17 +223,16 @@ class Board extends View {
 type ClickListener = (p: Point) => void;
 
 class ClickableBoard extends Board {
+  enabled = false;
   protected p: Point | null;
   protected listeners: ClickListener[] = [];
-  public enabled = false;
 
-  constructor(parent: HTMLElement | string, public size: BoardSize,
-              layerDescs: any[]) {
-    super(parent, size, layerDescs);
+  constructor(parent: HTMLElement | string, position: Position, layerDescs: any[]) {
+    super(parent, position, layerDescs);
 
     this.ctx.canvas.addEventListener('mousemove', (e) => {
       // Find the point on the board being hovered over.
-      let p = this.canvasToBoard(e.offsetX, e.offsetY, 0.4);
+      let p = this.canvasToBoard(e.offsetX, e.offsetY, 0.45);
 
       // Clear the hovered point if there's already a stone on the board there.
       if (p != null && this.getStone(p) != Color.Empty) {
@@ -276,8 +271,15 @@ class ClickableBoard extends Board {
     });
   }
 
-  onClick(cb: (p: Point) => void) {
+  onClick(cb: ClickListener) {
     this.listeners.push(cb);
+  }
+
+  setPosition(position: Position) {
+    if (position != this.position) {
+      this.p = null;
+      super.setPosition(position);
+    }
   }
 
   drawImpl() {
@@ -285,13 +287,12 @@ class ClickableBoard extends Board {
     let p = this.enabled ? this.p : null;
     this.ctx.canvas.style.cursor = p ? 'pointer' : null;
     if (p) {
-      this.drawStones([p], this.toPlay, 0.6);
+      this.drawStones([p], this.position.toPlay, 0.6);
     }
   }
 }
 
 export {
-  Annotation,
   Board,
   ClickableBoard,
   COL_LABELS,

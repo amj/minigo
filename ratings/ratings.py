@@ -262,7 +262,7 @@ def suggest_pairs(top_n=10, per_n=3, ignore_before=300):
         print("Pairing {}, sigma {:.2f} (Rating {:.2f})".format(p1[0], p1[2], p1[1]))
         for p2 in choices:
             res.append([p1[0], p2[0]])
-            print("   {}, ratings delta {:.2f}".format(p2[0], abs(p1[1]-p2[1])))
+            print("   {}, ratings delta {:.2f}".format(p2[0], abs(p1[1] - p2[1])))
     return res
 
 
@@ -273,7 +273,7 @@ def sync(root, force_all=False):
         num_days = (dt.datetime.utcnow() -
                     dt.datetime.utcfromtimestamp(last_ts) +
                     dt.timedelta(days=1)).days
-        ds = [(dt.datetime.utcnow() - dt.timedelta(days=d)).strftime("%Y-%m-%d") for d in range(num_days+1)]
+        ds = [(dt.datetime.utcnow() - dt.timedelta(days=d)).strftime("%Y-%m-%d") for d in range(num_days + 1)]
         for d in ds:
             if not os.path.isdir(os.path.join(root, d)):
                 os.mkdir(os.path.join(root, d))
@@ -289,13 +289,15 @@ def sync(root, force_all=False):
         dirs = os.listdir(root)
         ingest_dirs(root, dirs)
 
+
 def wins_subset(bucket):
     with sqlite3.connect('ratings.db') as db:
-      data = db.execute("select model_winner, model_loser from wins").fetchall()
-      bucket_ids = [id[0] for id in db.execute(
-          "select id from models where bucket = ?", (bucket,)).fetchall()]
-      bucket_ids.sort()
-      data = [d for d in data if d[0] in bucket_ids and d[1] in bucket_ids]
+        data = db.execute(
+            "select model_winner, model_loser from wins "
+            "join models where "
+            "    models.bucket = ? AND "
+            "    model_winner = models.id",
+            (bucket,)).fetchall()
     return data
 
 
@@ -317,6 +319,7 @@ def main():
             print("{:>30}:  {:.2f} ({:.3f})".format(m[1], rat, sigma))
         else:
             print("{}, Model id not found({})".format(m[1], m_id))
+
 
 if __name__ == '__main__':
     remaining_argv = flags.FLAGS(sys.argv, known_only=True)

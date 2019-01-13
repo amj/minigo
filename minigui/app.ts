@@ -12,48 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {Annotation, Position} from './position'
 import {Socket} from './gtp_socket'
-import {Nullable, Color, Move} from './base'
-import {Annotation, Board} from './board'
+import {Color, Move, N, Nullable, movesEqual, setBoardSize, stonesEqual, toKgs} from './base'
+import {Board} from './board'
 import * as util from './util'
 
-class Position {
-  search: Move[] = [];
-  pv: Move[] = [];
-  n: Nullable<number[]> = null;
-  dq: Nullable<number[]> = null;
-  annotations: Annotation[] = [];
-
-  constructor(public moveNum: number,
-              public stones: Color[],
-              public lastMove: Nullable<Move>,
-              public toPlay: Color) {
-    if (lastMove != null && lastMove != 'pass' && lastMove != 'resign') {
-      this.annotations.push({
-        p: lastMove,
-        shape: Annotation.Shape.Dot,
-        color: '#ef6c02',
-      });
-    }
-  }
-}
-
-interface SearchMsg {
+interface PositionJson {
+  id: string;
+  parentId?: string;
   moveNum: number;
-  toPlay: string | Color;
-  search: string[] | Move[];
-  n: number[];
-  dq: number[];
-  pv?: string[] | Move[];
-}
-
-interface GameStateMsg {
-  board: string;
   toPlay: string;
-  lastMove?: string;
-  moveNum: number;
-  q: number;
+  stones: string;
+  move?: string;
   gameOver: boolean;
+  comment?: string;
+  caps?: number[];
+}
+
+interface PositionUpdateJson {
+  id: string;
+  n?: number;
+  q?: number;
+  pv?: string;
+  variations?: string[][];
+  search?: string[];
+  childN?: number[];
+  childQ?: number[];
 }
 
 // App base class used by the different Minigui UI implementations.
@@ -61,54 +46,159 @@ abstract class App {
   // WebSocket connection to the Miniui backend server.
   protected gtp = new Socket();
 
-  // Board size.
-  protected size: number;
-
   // True if Minigo is processing a genmove command.
   protected engineBusy = false;
 
-  // The list of board positions played.
-  // TODO(tommadams): This will need to be turned into a tree when we add an
-  // analysis mode.
-  protected positionHistory: Position[];
+  // The root of the game tree, an empty board.
+  protected rootPosition: Position;
 
-  // The current position being displayed on the boards.
+  // The currently active position.
   protected activePosition: Position;
 
-  // True when the backend reports that the game is over.
-  protected gameOver = true;
-
-  // Whose turn is it.
-  protected toPlay = Color.Black;
-
-  // List of Board views.
-  private boards: Board[] = [];
+  protected positionMap = new Map<string, Position>();
 
   protected abstract onGameOver(): void;
 
+  protected abstract onPositionUpdate(position: Position, update: Position.Update): void;
+
+  protected abstract onNewPosition(position: Position): void;
+
   constructor() {
-    this.gtp.onData('mg-search', this.onSearch.bind(this));
-    this.gtp.onData('mg-gamestate', this.onGameState.bind(this));
+    this.gtp.onData('mg-update', (j: PositionUpdateJson) => {
+      let position = this.positionMap.get(j.id);
+      if (position === undefined) {
+        // Just after refreshing the page, the backend will still be sending
+        // position updates if pondering is enabled. Ignore updates for any
+        // positions we don't know about.
+        return;
+      }
+      let update = this.newPositionUpdate(j);
+      position.update(update);
+      this.onPositionUpdate(position, update);
+    });
+
+    this.gtp.onData('mg-position', (j: PositionJson | PositionUpdateJson) => {
+      let position = this.newPosition(j as PositionJson);
+      let update = this.newPositionUpdate(j);
+      position.update(update);
+      this.onNewPosition(position);
+      if (position.gameOver) {
+        this.onGameOver();
+      }
+    });
+  }
+
+  private newPosition(j: PositionJson): Position {
+    let position = this.positionMap.get(j.id);
+    if (position !== undefined) {
+      return position;
+    }
+
+    for (let prop of ['stones', 'toPlay', 'gameOver']) {
+      if (!j.hasOwnProperty(prop)) {
+        throw new Error(`missing required property: ${prop}`);
+      }
+    }
+
+    let def = j as PositionJson;
+    let stones: Color[] = [];
+    const stoneMap: {[index: string]: Color} = {
+      '.': Color.Empty,
+      'X': Color.Black,
+      'O': Color.White,
+    };
+    for (let i = 0; i < def.stones.length; ++i) {
+      stones.push(stoneMap[def.stones[i]]);
+    }
+    let toPlay = util.parseColor(def.toPlay);
+    let gameOver = def.gameOver;
+
+    if (def.parentId === undefined) {
+      // No parent, this must be the root.
+      if (def.move != null) {
+        throw new Error('move mustn\'t be set for root position');
+      }
+      position = this.rootPosition;
+      position.id = def.id;
+    } else {
+      // The position has a parent, which must exist in the positionMap.
+      let parent = this.positionMap.get(def.parentId);
+      if (parent === undefined) {
+        throw new Error(
+            `Can't find parent with id ${def.parentId} for position ${def.id}`);
+      }
+      if (def.move == null) {
+        throw new Error('new positions must specify move');
+      }
+      let move = util.parseMove(def.move);
+      position = parent.addChild(def.id, move, stones, gameOver);
+    }
+
+    if (j.comment) {
+      position.comment = j.comment;
+    }
+
+    if (j.caps !== undefined) {
+      position.captures[0] = j.caps[0];
+      position.captures[1] = j.caps[1];
+    }
+
+    if (position.toPlay != toPlay) {
+      throw new Error(`expected ${position.toPlay}, got ${toPlay}`);
+    }
+    this.positionMap.set(position.id, position);
+    return position;
+  }
+
+  private newPositionUpdate(j: PositionUpdateJson): Position.Update {
+    let update: Position.Update = {}
+    if (j.n != null) { update.n = j.n; }
+    if (j.q != null) { update.q = j.q; }
+    if (j.variations != null) {
+      update.variations = {};
+      for (let key in j.variations) {
+        if (key == null) {
+          continue;
+        }
+        update.variations[key] = util.parseMoves(j.variations[key]);
+      }
+    }
+    if (j.childN != null) {
+      update.childN = j.childN;
+    }
+    if (j.childQ != null) {
+      update.childQ = [];
+      for (let q of j.childQ) {
+        update.childQ.push(q / 1000);
+      }
+    }
+    return update;
   }
 
   protected connect() {
     let uri = `http://${document.domain}:${location.port}/minigui`;
-    return this.gtp.connect(uri).then((size: number) => {
-      this.size = size;
+    let params = new URLSearchParams(window.location.search);
+    let p = params.get("gtp_debug");
+    let debug = (p != null) && (p == "" || p == "1" || p.toLowerCase() == "true");
+    return this.gtp.connect(uri, debug).then((size: number) => {
+      // setBoardSize sets the global variable N to the board size for the game
+      // (as provided by the backend engine). The code uses N from hereon in.
+      setBoardSize(size);
+
+      let stones = new Array<Color>(N * N);
+      stones.fill(Color.Empty);
+      this.rootPosition = new Position(
+          'dummy-root', null, stones, null, Color.Black, false, true);
+      this.activePosition = this.rootPosition;
     });
   }
 
-  protected init(boards: Board[]) {
-    this.boards = boards;
-  }
-
   protected newGame() {
-    this.activePosition = new Position(
-      0, util.emptyBoard(this.size), null, Color.Black)
-    this.positionHistory = [this.activePosition];
+    this.positionMap.clear();
+    this.rootPosition.children = [];
+    this.activePosition = this.rootPosition;
 
     this.gtp.send('clear_board');
-    this.gtp.send('gamestate');
     this.gtp.send('info');
 
     // Iterate over the data-* attributes attached to the main minigui container
@@ -125,82 +215,9 @@ abstract class App {
         }
       }
     }
-
-    this.updateBoards(this.activePosition);
-  }
-
-  // Updates all layers of the App's boards from a state object. Typically the
-  // static object is a JSON blob sent from the backend with things like the
-  // stones on the board, the current principle variation, visit counts, etc.
-  // Layers that derive from DataLayer will check the given state object for a
-  // specific property. If the state object contains a matching property, the
-  // layer will update its copy of the state and signal that the board should
-  // be redrawn (by their update method returning true).
-  protected updateBoards(state: any) {
-    for (let board of this.boards) {
-      if (board.update(state)) {
-        board.draw();
-      }
-    }
-  }
-
-  protected onSearch(msg: SearchMsg) {
-    // Parse move variations.
-    msg.search = util.parseMoves(msg.search as string[], this.size);
-    msg.toPlay = util.parseGtpColor(msg.toPlay as string);
-    if (msg.pv) {
-      msg.pv = util.parseMoves(msg.pv as string[], this.size);
-    }
-
-    // Update the board state with contents of the search.
-    // Copies the properties named in `props` that are present in `msg` into the
-    // current position history.
-    // TODO(tommadams): It would be more flexible to allow the position history
-    // to store any/all properties return in the SearchMsg, without having to
-    // specify this property list.
-    const props = ['n', 'dq', 'pv', 'search'];
-    util.partialUpdate(msg, this.positionHistory[msg.moveNum], props);
-
-    // Update the boards.
-    if (msg.moveNum == this.activePosition.moveNum) {
-      this.updateBoards(msg);
-    }
-  }
-
-  protected onGameState(msg: GameStateMsg) {
-    // Parse the raw message.
-    let stoneMap: {[index: string]: Color} = {
-      '.': Color.Empty,
-      'X': Color.Black,
-      'O': Color.White,
-    };
-    let stones = [];
-    for (let i = 0; i < msg.board.length; ++i) {
-      stones.push(stoneMap[msg.board[i]]);
-    }
-
-    this.toPlay = util.parseGtpColor(msg.toPlay);
-    this.gameOver = msg.gameOver;
-    let lastMove =
-        msg.lastMove ? util.parseGtpMove(msg.lastMove, this.size) : null;
-
-    // Create a new position.
-    let position = new Position(msg.moveNum, stones, lastMove, this.toPlay);
-    this.positionHistory[msg.moveNum] = position;
-    if (msg.moveNum == this.activePosition.moveNum + 1) {
-      this.activePosition = position;
-      this.updateBoards(this.activePosition);
-    }
-
-    if (this.gameOver) {
-      this.onGameOver();
-    }
   }
 }
 
 export {
   App,
-  Position,
-  SearchMsg,
-  GameStateMsg,
 }

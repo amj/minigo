@@ -15,9 +15,10 @@
 #ifndef CC_COLOR_H_
 #define CC_COLOR_H_
 
-#include <iostream>
+#include <ostream>
 
-#include "cc/check.h"
+#include "absl/strings/string_view.h"
+#include "cc/logging.h"
 
 namespace minigo {
 
@@ -34,6 +35,9 @@ inline Color OtherColor(Color color) {
   MG_CHECK(color == Color::kWhite || color == Color::kBlack);
   return color == Color::kWhite ? Color::kBlack : Color::kWhite;
 }
+
+// Returns ".", "B" or "W".
+absl::string_view ColorToCode(Color color);
 
 std::ostream& operator<<(std::ostream& os, Color color);
 

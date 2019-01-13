@@ -17,9 +17,10 @@ import {getElement, querySelector} from './util';
 
 type CmdHandler = (cmd: string) => void;
 
+// TODO(tommadams): Rename to Console.
 class Log {
-  private logElem: HTMLElement;
-  private consoleElem: HTMLElement;
+  logElem: HTMLElement;
+  consoleElem: Nullable<HTMLElement> = null;
   private cmdHandler: Nullable<CmdHandler> = null;
 
   constructor(logElemId: string, consoleElemId: Nullable<string> = null) {
@@ -27,12 +28,15 @@ class Log {
     if (consoleElemId) {
       this.consoleElem = getElement(consoleElemId);
       this.consoleElem.addEventListener('keypress', (e) => {
+        // The TypeScript compiler isn't smart enough to understand that
+        // consoleElem is never null here.
+        let elem = this.consoleElem as HTMLElement;
         if (e.keyCode == 13) {
-          let cmd = this.consoleElem.innerText.trim();
+          let cmd = elem.innerText.trim();
           if (cmd != '' && this.cmdHandler) {
             this.cmdHandler(cmd);
           }
-          this.consoleElem.innerHTML = '';
+          elem.innerHTML = '';
           e.preventDefault();
           return false;
         }
@@ -70,6 +74,22 @@ class Log {
 
   onConsoleCmd(cmdHandler: CmdHandler) {
     this.cmdHandler = cmdHandler;
+  }
+
+  get hasFocus() {
+    return this.consoleElem && document.activeElement == this.consoleElem;
+  }
+
+  focus() {
+    if (this.consoleElem) {
+      this.consoleElem.focus();
+    }
+  }
+
+  blur() {
+    if (this.consoleElem) {
+      this.consoleElem.blur();
+    }
   }
 }
 

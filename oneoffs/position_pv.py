@@ -26,7 +26,6 @@ sys.path.insert(0, '.')
 import os
 
 from absl import app, flags
-import numpy as np
 from tqdm import tqdm
 
 import go
@@ -82,8 +81,7 @@ def positions_from_sgfs(sgf_files):
     data = [("empty", go.Position(komi=7.5))]
     for sgf in sgf_files:
         sgf_name = os.path.basename(sgf).replace(".sgf", "")
-        positions, moves, _ = oneoff_utils.parse_sgf(sgf)
-        final = positions[-1].play_move(moves[-1])
+        final = oneoff_utils.final_position_sgf(sgf)
         data.append((sgf_name, final))
     return data
 

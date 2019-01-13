@@ -54,7 +54,11 @@ const std::array<inline_vector<Coord, 4>, kN* kN> kNeighborCoords = []() {
 }();
 
 Position::Position(BoardVisitor* bv, GroupVisitor* gv, Color to_play, int n)
-    : board_visitor_(bv), group_visitor_(gv), to_play_(to_play), n_(n) {}
+    : board_visitor_(bv),
+      group_visitor_(gv),
+      to_play_(to_play),
+      n_(n),
+      stone_hash_(0) {}
 
 Position::Position(BoardVisitor* bv, GroupVisitor* gv, const Position& position)
     : Position(position) {
@@ -63,8 +67,8 @@ Position::Position(BoardVisitor* bv, GroupVisitor* gv, const Position& position)
 }
 
 void Position::PlayMove(Coord c, Color color) {
-  if (c == Coord::kPass) {
-    PassMove();
+  if (c == Coord::kPass || c == Coord::kResign) {
+    PassOrResignMove(c);
     return;
   }
 
@@ -73,12 +77,12 @@ void Position::PlayMove(Coord c, Color color) {
   } else {
     to_play_ = color;
   }
-  MG_CHECK(IsMoveLegal(c)) << c;
+
+  MG_DCHECK(ClassifyMove(c) != MoveType::kIllegal) << c;
 
   AddStoneToBoard(c, color);
 
   n_ += 1;
-  num_consecutive_passes_ = 0;
   to_play_ = OtherColor(to_play_);
   previous_move_ = c;
 }
@@ -97,25 +101,9 @@ std::string Position::ToSimpleString() const {
         oss << (c == ko_ ? "*" : ".");
       }
     }
-    oss << "\n";
-  }
-  return oss.str();
-}
-
-std::string Position::ToGroupString() const {
-  std::ostringstream oss;
-  for (int row = 0; row < kN; ++row) {
-    for (int col = 0; col < kN; ++col) {
-      Coord c(row, col);
-      Stone s = stones_[c];
-      if (s.empty()) {
-        oss << kPrintEmpty << ".  ";
-      } else {
-        oss << (s.color() == Color::kWhite ? kPrintWhite : kPrintBlack);
-        oss << absl::StreamFormat("%02x ", s.group_id());
-      }
+    if (row + 1 < kN) {
+      oss << "\n";
     }
-    oss << kPrintNormal << "\n";
   }
   return oss.str();
 }
@@ -126,9 +114,8 @@ std::string Position::ToPrettyString(bool use_ansi_colors) const {
   auto format_cols = [&oss]() {
     oss << "   ";
     for (int i = 0; i < kN; ++i) {
-      oss << Coord::kKgsColumns[i] << " ";
+      oss << Coord::kGtpColumns[i] << " ";
     }
-    oss << "\n";
   };
 
   const char* print_white = use_ansi_colors ? kPrintWhite : "";
@@ -137,6 +124,7 @@ std::string Position::ToPrettyString(bool use_ansi_colors) const {
   const char* print_normal = use_ansi_colors ? kPrintNormal : "";
 
   format_cols();
+  oss << "\n";
   for (int row = 0; row < kN; ++row) {
     oss << absl::StreamFormat("%2d ", kN - row);
     for (int col = 0; col < kN; ++col) {
@@ -157,12 +145,11 @@ std::string Position::ToPrettyString(bool use_ansi_colors) const {
   return oss.str();
 }
 
-void Position::PassMove() {
+void Position::PassOrResignMove(Coord c) {
   n_ += 1;
-  num_consecutive_passes_ += 1;
   ko_ = Coord::kInvalid;
   to_play_ = OtherColor(to_play_);
-  previous_move_ = Coord::kPass;
+  previous_move_ = c;
 }
 
 void Position::AddStoneToBoard(Coord c, Color color) {
@@ -232,6 +219,7 @@ void Position::AddStoneToBoard(Coord c, Color color) {
       }
     }
   }
+  stone_hash_ ^= zobrist::MoveHash(c, color);
 
   // Remove captured groups.
   for (const auto& p : captured_groups) {
@@ -268,6 +256,7 @@ void Position::RemoveGroup(Coord c) {
 
     MG_CHECK(stones_[c].group_id() == removed_group_id);
     stones_[c] = {};
+    stone_hash_ ^= zobrist::MoveHash(c, removed_color);
     tiny_set<GroupId, 4> other_groups;
     for (auto nc : kNeighborCoords[c]) {
       auto ns = stones_[nc];
@@ -339,42 +328,42 @@ Color Position::IsKoish(Coord c) const {
   return ko_color;
 }
 
-bool Position::IsMoveLegal(Coord c) const {
-  if (c == Coord::kPass) {
-    return true;
+Position::MoveType Position::ClassifyMove(Coord c) const {
+  if (c == Coord::kPass || c == Coord::kResign) {
+    return MoveType::kNoCapture;
   }
   if (!stones_[c].empty()) {
-    return false;
+    return MoveType::kIllegal;
   }
   if (c == ko_) {
-    return false;
+    return MoveType::kIllegal;
   }
-  if (IsMoveSuicidal(c, to_play_)) {
-    return false;
-  }
-  return true;
-}
 
-bool Position::IsMoveSuicidal(Coord c, Color color) const {
-  auto other_color = OtherColor(color);
+  auto result = MoveType::kIllegal;
+  auto other_color = OtherColor(to_play_);
   for (auto nc : kNeighborCoords[c]) {
     Stone s = stones_[nc];
     if (s.empty()) {
       // At least one liberty at nc after playing at c.
-      return false;
+      if (result == MoveType::kIllegal) {
+        result = MoveType::kNoCapture;
+      }
     } else if (s.color() == other_color) {
       if (groups_[s.group_id()].num_liberties == 1) {
         // Will capture opponent group that has a stone at nc.
-        return false;
+        result = MoveType::kCapture;
       }
     } else {
       if (groups_[s.group_id()].num_liberties > 1) {
-        // Connecting to a same colored group at nc that has than one liberty.
-        return false;
+        // Connecting to a same colored group at nc that has more than one
+        // liberty.
+        if (result == MoveType::kIllegal) {
+          result = MoveType::kNoCapture;
+        }
       }
     }
   }
-  return true;
+  return result;
 }
 
 bool Position::HasNeighboringGroup(Coord c, GroupId group_id) const {

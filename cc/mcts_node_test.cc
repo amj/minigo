@@ -17,9 +17,11 @@
 #include <array>
 #include <set>
 
+#include "absl/memory/memory.h"
 #include "cc/position.h"
 #include "cc/random.h"
 #include "cc/test_utils.h"
+#include "cc/zobrist.h"
 #include "gtest/gtest.h"
 
 namespace minigo {
@@ -48,7 +50,7 @@ TEST(MctsNodeTest, UpperConfidenceBound) {
   MctsNode root(&root_stats, TestablePosition("", Color::kBlack));
   auto* leaf = root.SelectLeaf();
   EXPECT_EQ(&root, leaf);
-  leaf->IncorporateResults(probs, 0.5, &root);
+  leaf->IncorporateResults(0.0, probs, 0.5, &root);
 
   // 0.02 are normalized to 1/82
   EXPECT_NEAR(1.0 / 82, root.child_P(0), epsilon);
@@ -58,7 +60,7 @@ TEST(MctsNodeTest, UpperConfidenceBound) {
   EXPECT_NEAR(puct_policy * std::sqrt(1) / (1 + 0), root.child_U(0), epsilon);
 
   leaf = root.SelectLeaf();
-  leaf->IncorporateResults(probs, 0.5, &root);
+  leaf->IncorporateResults(0.0, probs, 0.5, &root);
   EXPECT_NE(&root, leaf);
   EXPECT_EQ(&root, leaf->parent);
   EXPECT_EQ(Coord(0), leaf->move);
@@ -72,7 +74,7 @@ TEST(MctsNodeTest, UpperConfidenceBound) {
   EXPECT_NE(&root, leaf2);
   EXPECT_EQ(&root, leaf2->parent);
   EXPECT_EQ(Coord(1), leaf2->move);
-  leaf2->IncorporateResults(probs, 0.5, &root);
+  leaf2->IncorporateResults(0.0, probs, 0.5, &root);
 
   // With the 2nd child expanded.
   ASSERT_EQ(3, root.N());
@@ -96,8 +98,8 @@ TEST(MctsNodeTest, ActionFlipping) {
   MctsNode black_root(&black_stats, TestablePosition("", Color::kBlack));
   MctsNode white_root(&white_stats, TestablePosition("", Color::kWhite));
 
-  black_root.SelectLeaf()->IncorporateResults(probs, 0, &black_root);
-  white_root.SelectLeaf()->IncorporateResults(probs, 0, &white_root);
+  black_root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &black_root);
+  white_root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &white_root);
   auto* black_leaf = black_root.SelectLeaf();
   auto* white_leaf = white_root.SelectLeaf();
   EXPECT_EQ(black_leaf->move, white_leaf->move);
@@ -111,14 +113,14 @@ TEST(MctsNodeTest, SelectLeaf) {
   for (float& prob : probs) {
     prob = 0.02;
   }
-  Coord c = Coord::FromKgs("D9");
+  Coord c = Coord::FromGtp("D9");
   probs[c] = 0.4;
 
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
 
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   EXPECT_EQ(Color::kWhite, root.position.to_play());
   auto* leaf = root.SelectLeaf();
@@ -135,10 +137,10 @@ TEST(MctsNodeTest, BackupIncorporateResults) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   auto* leaf = root.SelectLeaf();
-  leaf->IncorporateResults(probs, -1, &root);  // white wins!
+  leaf->IncorporateResults(0.0, probs, -1, &root);  // white wins!
 
   // Root was visited twice: first at the root, then at this child.
   EXPECT_EQ(2, root.N());
@@ -163,7 +165,7 @@ TEST(MctsNodeTest, BackupIncorporateResults) {
   auto* leaf2 = root.SelectLeaf();
   ASSERT_EQ(leaf, leaf2->parent);
 
-  leaf2->IncorporateResults(probs, -0.2, &root);  // another white semi-win
+  leaf2->IncorporateResults(0.0, probs, -0.2, &root);  // another white semi-win
   EXPECT_EQ(3, root.N());
   // average of 0, 0, -1, -0.2
   EXPECT_FLOAT_EQ(-0.3, root.Q());
@@ -178,6 +180,65 @@ TEST(MctsNodeTest, BackupIncorporateResults) {
   EXPECT_FLOAT_EQ(-0.6, leaf2->Q());
 }
 
+TEST(MctsNodeTest, ExpandChildValueInit) {
+  std::array<float, kNumMoves> probs;
+  for (float& prob : probs) {
+    prob = 0.02;
+  }
+
+  // Any child will do.
+  auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
+  {
+    MctsNode::EdgeStats root_stats;
+    MctsNode root(&root_stats, board);
+    // 0.0 is init-to-parent
+    root.IncorporateResults(0.0, probs, 0.1, &root);
+
+    auto* leaf = root.SelectLeaf();
+    EXPECT_FLOAT_EQ(0.1, root.child_Q(2));
+    EXPECT_FLOAT_EQ(0.1, leaf->Q());
+
+    // 2nd IncorporateResult shouldn't change Q.
+    root.IncorporateResults(0.0, probs, 0.9, &root);
+
+    EXPECT_FLOAT_EQ(0.1, root.child_Q(2));
+    EXPECT_FLOAT_EQ(0.1, leaf->Q());
+  }
+
+  {
+    MctsNode::EdgeStats root_stats;
+    MctsNode root(&root_stats, board);
+    // -2.0 is init-to-loss
+    root.IncorporateResults(-2.0, probs, 0.1, &root);
+
+    auto* leaf = root.SelectLeaf();
+    EXPECT_FLOAT_EQ(-1.0, root.child_Q(leaf->move));
+    EXPECT_FLOAT_EQ(-1.0, leaf->Q());
+  }
+
+  {
+    MctsNode::EdgeStats root_stats;
+    MctsNode root(&root_stats, board);
+    // 2.0 is init-to-win (this is silly don't do this)
+    root.IncorporateResults(2.0, probs, 0.1, &root);
+
+    auto* leaf = root.SelectLeaf();
+    EXPECT_FLOAT_EQ(1.0, root.child_Q(leaf->move));
+    EXPECT_FLOAT_EQ(1.0, leaf->Q());
+  }
+
+  {
+    MctsNode::EdgeStats root_stats;
+    MctsNode root(&root_stats, board);
+    // 0.25 slightly prefers to explore already visited children.
+    root.IncorporateResults(-0.25, probs, 0.1, &root);
+
+    auto* leaf = root.SelectLeaf();
+    EXPECT_FLOAT_EQ(-0.15, root.child_Q(leaf->move));
+    EXPECT_FLOAT_EQ(-0.15, leaf->Q());
+  }
+}
+
 TEST(MctsNodeTest, DoNotExplorePastFinish) {
   std::array<float, kNumMoves> probs;
   for (float& prob : probs) {
@@ -187,13 +248,13 @@ TEST(MctsNodeTest, DoNotExplorePastFinish) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   auto* first_pass = root.MaybeAddChild(Coord::kPass);
-  first_pass->IncorporateResults(probs, 0, &root);
+  first_pass->IncorporateResults(0.0, probs, 0, &root);
   auto* second_pass = first_pass->MaybeAddChild(Coord::kPass);
-  EXPECT_DEATH(second_pass->IncorporateResults(probs, 0, &root),
-               "is_game_over");
+  EXPECT_DEATH(second_pass->IncorporateResults(0.0, probs, 0, &root),
+               "game_over");
   float value = second_pass->position.CalculateScore(0) > 0 ? 1 : -1;
   second_pass->IncorporateEndGameResult(value, &root);
   auto* node_to_explore = second_pass->SelectLeaf();
@@ -206,7 +267,7 @@ TEST(MctsNodeTest, AddChild) {
   TestablePosition board("");
   MctsNode root(&root_stats, board);
 
-  Coord c = Coord::FromKgs("B9");
+  Coord c = Coord::FromGtp("B9");
   auto* child = root.MaybeAddChild(c);
   EXPECT_EQ(1, root.children.count(c));
   EXPECT_EQ(&root, child->parent);
@@ -218,7 +279,7 @@ TEST(MctsNodeTest, AddChildIdempotency) {
   TestablePosition board("");
   MctsNode root(&root_stats, board);
 
-  Coord c = Coord::FromKgs("B9");
+  Coord c = Coord::FromGtp("B9");
   auto* child = root.MaybeAddChild(c);
   EXPECT_EQ(1, root.children.count(c));
   EXPECT_EQ(1, root.children.size());
@@ -239,13 +300,13 @@ TEST(MctsNodeTest, NeverSelectIllegalMoves) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   // and let's say the root were visited a lot of times, which pumps up the
   // action score for unvisited moves...
   root.stats->N = 100000;
   for (int i = 0; i < kNumMoves; ++i) {
-    if (root.position.IsMoveLegal(i)) {
+    if (root.position.ClassifyMove(i) != Position::MoveType::kIllegal) {
       root.edges[i].N = 10000;
     }
   }
@@ -278,7 +339,7 @@ TEST(MctsNodeTest, DontTraverseUnexpandedChild) {
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
   root_stats.N = 5;
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   auto* leaf1 = root.SelectLeaf();
   EXPECT_EQ(17, leaf1->move);
@@ -290,7 +351,7 @@ TEST(MctsNodeTest, DontTraverseUnexpandedChild) {
 
 // Verifies that action score is used as a tie-breaker to choose between moves
 // with the same visit count when selecting the best one.
-// This test uses raw indices here instead of KGS coords to make it clear that
+// This test uses raw indices here instead of GTP coords to make it clear that
 // without using action score as a tie-breaker, the move with the lower index
 // would be selected by GetMostVisitedMove.
 TEST(MctsNodeTest, GetMostVisitedPath) {
@@ -305,7 +366,7 @@ TEST(MctsNodeTest, GetMostVisitedPath) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition("", Color::kBlack);
   MctsNode root(&root_stats, board);
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   // We should select the highest probabilty first.
   auto* leaf1 = root.SelectLeaf();
@@ -335,7 +396,7 @@ TEST(MctsNodeTest, TestSelectLeaf) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
-  root.SelectLeaf()->IncorporateResults(probs, 0, &root);
+  root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   std::set<MctsNode*> leaves;
 
@@ -367,7 +428,7 @@ TEST(MctsNodeTest, NormalizeTest) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition("");
   MctsNode root(&root_stats, board);
-  root.IncorporateResults(probs, 0, &root);
+  root.IncorporateResults(0.0, probs, 0, &root);
 
   // Adjust for the one value that is five times larger and one missing value.
   float normalized = 1.0 / (kNumMoves - 1 + 4);
@@ -392,16 +453,16 @@ TEST(MctsNodeTest, InjectNoiseOnlyLegalMoves) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
-  root.IncorporateResults(probs, 0, &root);
+  root.IncorporateResults(0.0, probs, 0, &root);
 
   // kAlmostDoneBoard has 6 legal moves including pass.
   float uniform_policy = 1.0 / 6;
 
   for (int i = 0; i < kNumMoves; ++i) {
-    if (root.illegal_moves[i]) {
-      EXPECT_FLOAT_EQ(0, root.edges[i].P);
-    } else {
+    if (root.legal_moves[i]) {
       EXPECT_FLOAT_EQ(uniform_policy, root.edges[i].P);
+    } else {
+      EXPECT_FLOAT_EQ(0, root.edges[i].P);
     }
   }
 
@@ -412,14 +473,80 @@ TEST(MctsNodeTest, InjectNoiseOnlyLegalMoves) {
   root.InjectNoise(noise);
 
   for (int i = 0; i < kNumMoves; ++i) {
-    if (root.illegal_moves[i]) {
-      EXPECT_FLOAT_EQ(0, root.edges[i].P);
-    } else {
+    if (root.legal_moves[i]) {
       EXPECT_LT(0.75 * uniform_policy, root.edges[i].P);
       EXPECT_GT(0.75 * uniform_policy + 0.25, root.edges[i].P);
+    } else {
+      EXPECT_FLOAT_EQ(0, root.edges[i].P);
     }
+  }
+}
+
+TEST(MctsNodeTest, TestSuperko) {
+  // clang-format off
+  std::vector<std::string> non_ko_moves = {
+    // Some moves at the top edge of the board that don't interfere with the kos
+    // at the bottom of the board.
+    "A9", "B9", "C9", "D9", "E9", "F9", "G9", "H9", "J9",
+    "A8", "B8", "C8", "D8", "E8", "F8", "G8", "H8", "J8",
+  };
+
+  std::vector<std::string> ko_moves = {
+      // Create two kos threats on the bottom edge of the board:
+      // .........
+      // .XO...OX.
+      // X.XO.O.OX
+      "A1", "F1", "B2", "G2", "C1", "H1", "J1", "D1", "H2", "C2",
+
+      // Capture one ko.
+      "G1", "B1", "pass", "H1",
+  };
+  // clang-format on
+
+  // Superko detection inserts caches into the tree at regularly spaced depths.
+  // For nodes that don't have a superko dectection cache, a linear search up
+  // the tree, comparing the stone hashes at each node is performed until a
+  // superko cache is hit.
+  // In order to verify that there isn't a bug related to the linear-scan &
+  // cache-lookup pair of checks, we run the superko test multiple times, with a
+  // different number of moves played at the start each time.
+  for (size_t iteration = 0; iteration < non_ko_moves.size(); ++iteration) {
+    std::vector<std::unique_ptr<MctsNode>> nodes;
+    MctsNode::EdgeStats root_stats;
+    BoardVisitor bv;
+    GroupVisitor gv;
+    nodes.push_back(absl::make_unique<MctsNode>(
+        &root_stats, Position(&bv, &gv, Color::kBlack)));
+
+    for (size_t move_idx = 0; move_idx < iteration; ++move_idx) {
+      Coord c = Coord::FromGtp(non_ko_moves[move_idx]);
+      ASSERT_TRUE(nodes.back()->legal_moves[c]);
+      nodes.push_back(absl::make_unique<MctsNode>(nodes.back().get(), c));
+    }
+
+    for (const auto& move : ko_moves) {
+      Coord c = Coord::FromGtp(move);
+      ASSERT_TRUE(nodes.back()->legal_moves[c]);
+      nodes.push_back(absl::make_unique<MctsNode>(nodes.back().get(), c));
+    }
+
+    // Without superko checking, it should look like capturing the second ko at
+    // C1 is valid.
+    auto c1 = Coord::FromGtp("C1");
+    EXPECT_EQ(Position::MoveType::kCapture,
+              nodes.back()->position.ClassifyMove(c1));
+
+    // When checking superko however, playing at C1 is not legal because it
+    // repeats a position.
+    EXPECT_FALSE(nodes.back()->legal_moves[c1]);
   }
 }
 
 }  // namespace
 }  // namespace minigo
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  ::minigo::zobrist::Init(614944751);
+  return RUN_ALL_TESTS();
+}

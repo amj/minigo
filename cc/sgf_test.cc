@@ -154,6 +154,15 @@ TEST(SgfTest, CreateSgfStringMoves) {
   EXPECT_EQ(expected, CreateSgfString(moves, options));
 }
 
+TEST(SgfTest, InvalidCoord) {
+  std::string sgf = "(;FF[4](;B[xx]))\n";
+
+  Ast ast;
+  ASSERT_TRUE(ast.Parse(sgf)) << ast.error();
+  std::vector<std::unique_ptr<sgf::Node>> trees;
+  EXPECT_FALSE(GetTrees(ast, &trees));
+}
+
 TEST(SgfTest, GetMainLineMoves) {
   /*
      --- B[aa] - W[ab] - B[ac]
@@ -176,8 +185,31 @@ TEST(SgfTest, GetMainLineMoves) {
 
   Ast ast;
   ASSERT_TRUE(ast.Parse(sgf)) << ast.error();
-  EXPECT_THAT(GetMainLineMoves(ast),
-              ::testing::ContainerEq(expected_main_line));
+
+  std::vector<std::unique_ptr<sgf::Node>> trees;
+  ASSERT_TRUE(GetTrees(ast, &trees));
+  ASSERT_EQ(2, trees.size());
+  auto actual_main_line = trees[0]->ExtractMainLine();
+  EXPECT_THAT(actual_main_line, ::testing::ContainerEq(expected_main_line));
+}
+
+TEST(SgfTest, CommentEscaping) {
+  // Fragment of an SGF that contains escaped characters.
+  std::string sgf = "(;FF[4];C[test [?\\]: comment]B[aa];W[bb]C[\\]])";
+
+  Ast ast;
+  EXPECT_TRUE(ast.Parse(sgf)) << ast.error();
+
+  std::vector<std::unique_ptr<sgf::Node>> trees;
+  ASSERT_TRUE(GetTrees(ast, &trees));
+  ASSERT_EQ(1, trees.size());
+
+  EXPECT_EQ("aa", trees[0]->move.c.ToSgf());
+  EXPECT_EQ("test [?]: comment", trees[0]->comment);
+
+  ASSERT_EQ(1, trees[0]->children.size());
+  EXPECT_EQ("bb", trees[0]->children[0]->move.c.ToSgf());
+  EXPECT_EQ("]", trees[0]->children[0]->comment);
 }
 
 }  // namespace

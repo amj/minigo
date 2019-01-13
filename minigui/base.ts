@@ -27,9 +27,32 @@ function otherColor(color: Color) {
   return color == Color.White ? Color.Black : Color.White;
 }
 
+function stonesEqual(a: Color[], b: Color[]) {
+  if (a.length != b.length) {
+    throw new Error(
+      `Expected arrays of equal length, got lengths ${a.length} & ${b.length}`);
+  }
+  for (let i = 0; i < a.length; ++i) {
+    if (a[i] != b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 enum BoardSize {
   Nine = 9,
   Nineteen = 19,
+}
+
+let N = BoardSize.Nineteen;
+
+function setBoardSize(size: number) {
+  if (size == BoardSize.Nine || size == BoardSize.Nineteen) {
+    N = size;
+  } else {
+    throw new Error(`Unsupported board size ${size}`);
+  }
 }
 
 // Canvas coordinate.
@@ -46,6 +69,27 @@ interface Point {
 
 type Move = Point | 'pass' | 'resign';
 
+function moveIsPoint(move: Nullable<Move>): move is Point {
+  return move != null && move != 'pass' && move != 'resign';
+}
+
+function toKgs(move: Move) {
+  if (move == 'pass' || move == 'resign') {
+    return move;
+  }
+  let row = N - move.row;
+  let col = COL_LABELS[move.col];
+  return `${col}${row}`;
+}
+
+function movesEqual(a: Nullable<Move>, b: Nullable<Move>) {
+  if (moveIsPoint(a) && moveIsPoint(b)) {
+    return a.row == b.row && a.col == b.col;
+  } else {
+    return a == b;
+  }
+}
+
 type Nullable<T> = T | null;
 
 export {
@@ -54,7 +98,13 @@ export {
   Color,
   Coord,
   Move,
+  N,
   Nullable,
   Point,
+  moveIsPoint,
+  movesEqual,
   otherColor,
+  setBoardSize,
+  stonesEqual,
+  toKgs,
 }

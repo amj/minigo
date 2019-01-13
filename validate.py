@@ -49,18 +49,16 @@ def validate(*tf_records):
     if FLAGS.use_tpu:
         def _input_fn(params):
             return preprocessing.get_tpu_input_tensors(
-                params['batch_size'],
-                tf_records, filter_amount=0.05, shuffle_examples=False)
+                params['batch_size'], tf_records, filter_amount=0.05)
     else:
         def _input_fn():
             return preprocessing.get_input_tensors(
                 FLAGS.train_batch_size, tf_records, filter_amount=0.05,
                 shuffle_examples=False)
 
-
-    steps = FLAGS.examples_to_validate / FLAGS.train_batch_size
+    steps = FLAGS.examples_to_validate // FLAGS.train_batch_size
     if FLAGS.use_tpu:
-        steps /= FLAGS.num_tpu_cores
+        steps //= FLAGS.num_tpu_cores
 
     estimator = dual_net.get_estimator()
     with utils.logged_timer("Validating"):
@@ -81,6 +79,7 @@ def main(argv):
     if not tf_records:
         raise RuntimeError("Did not find any holdout files for validating!")
     validate(*tf_records)
+
 
 if __name__ == "__main__":
     app.run(main)

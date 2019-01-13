@@ -22,17 +22,59 @@
 
 #include "absl/strings/str_format.h"
 #include "cc/algorithm.h"
-#include "cc/check.h"
+#include "cc/logging.h"
 
 namespace minigo {
 
+namespace {
+
+void InitLegalMoves(MctsNode* node) {
+  auto& position = node->position;
+  auto position_hash = position.stone_hash();
+  auto to_play = position.to_play();
+  for (int c = 0; c < kN * kN; ++c) {
+    switch (position.ClassifyMove(c)) {
+      case Position::MoveType::kIllegal: {
+        // The move is trivially not legal.
+        node->legal_moves[c] = false;
+        break;
+      }
+
+      case Position::MoveType::kNoCapture: {
+        // The move will not capture any stones: we can calculate the new
+        // position's stone hash directly.
+        auto new_hash = position_hash ^ zobrist::MoveHash(c, to_play);
+        node->legal_moves[c] = !node->HasPositionBeenPlayedBefore(new_hash);
+        break;
+      }
+
+      case Position::MoveType::kCapture: {
+        // The move will capture some opponent stones: in order to calculate the
+        // stone hash, we actually have to play the move.
+
+        Position new_position(position);
+        // It's safe to call AddStoneToBoard instead of PlayMove because:
+        //  - we know the move is not kPass.
+        //  - the move is legal (modulo superko).
+        //  - we only care about new_position's stone_hash and not the rest of
+        //    the bookkeeping that PlayMove updates.
+        new_position.AddStoneToBoard(c, to_play);
+        auto new_hash = new_position.stone_hash();
+        node->legal_moves[c] = !node->HasPositionBeenPlayedBefore(new_hash);
+        break;
+      }
+    }
+  }
+  node->legal_moves[Coord::kPass] = true;
+}
+
+constexpr int kSuperKoCacheStride = 8;
+
+}  // namespace
+
 MctsNode::MctsNode(EdgeStats* stats, const Position& position)
     : parent(nullptr), stats(stats), move(Coord::kInvalid), position(position) {
-  // TODO(tommadams): Only call IsMoveLegal if we want to select a leaf for
-  // expansion.
-  for (int i = 0; i < kNumMoves; ++i) {
-    illegal_moves[i] = !position.IsMoveLegal(i);
-  }
+  InitLegalMoves(this);
 }
 
 MctsNode::MctsNode(MctsNode* parent, Coord move)
@@ -41,28 +83,42 @@ MctsNode::MctsNode(MctsNode* parent, Coord move)
       move(move),
       position(parent->position) {
   position.PlayMove(move);
-  // TODO(tommadams): Only call IsMoveLegal if we want to select a leaf for
-  // expansion.
-  for (int i = 0; i < kNumMoves; ++i) {
-    illegal_moves[i] = !position.IsMoveLegal(i);
+
+  // Insert a cache of ancestor Zobrist hashes at regular depths in the tree.
+  // See the comment for superko_cache in the mcts_node.h for more details.
+  if ((position.n() % kSuperKoCacheStride) == 0) {
+    superko_cache = absl::make_unique<SuperkoCache>();
+    superko_cache->reserve(position.n() + 1);
+    superko_cache->insert(position.stone_hash());
+    for (auto* node = parent; node != nullptr; node = node->parent) {
+      if (node->superko_cache != nullptr) {
+        superko_cache->insert(node->superko_cache->begin(),
+                              node->superko_cache->end());
+        break;
+      }
+      superko_cache->insert(node->position.stone_hash());
+    }
   }
+
+  InitLegalMoves(this);
 }
 
 Coord MctsNode::GetMostVisitedMove() const {
   // Find the set of moves with the largest N.
   inline_vector<Coord, kNumMoves> moves;
-  moves.push_back(0);
-  int best_N = child_N(0);
-  for (int i = 1; i < kNumMoves; ++i) {
+  int best_N = -1;
+  for (int i = 0; i < kNumMoves; ++i) {
     int cn = child_N(i);
-    if (cn > best_N) {
-      moves.clear();
-      moves.push_back(i);
-      best_N = cn;
-    } else if (cn == best_N) {
+    if (cn >= best_N) {
+      if (cn > best_N) {
+        moves.clear();
+        best_N = cn;
+      }
       moves.push_back(i);
     }
   }
+
+  MG_CHECK(!moves.empty());
 
   // If there's only one move with the largest N, we're done.
   if (moves.size() == 1) {
@@ -113,7 +169,7 @@ std::string MctsNode::Describe() const {
     absl::StrAppendFormat(
         &result,
         "\n%-5s: % 4.3f % 4.3f %0.3f %0.3f %0.3f %5d %0.4f % 6.5f % 3.2f",
-        i.ToKgs(), child_action_score[i], child_Q(i), child_U(i), child_P(i),
+        i.ToGtp(), child_action_score[i], child_Q(i), child_U(i), child_P(i),
         child_original_P(i), static_cast<int>(child_N(i)), soft_N, p_delta,
         p_rel);
   }
@@ -124,10 +180,25 @@ std::vector<Coord> MctsNode::MostVisitedPath() const {
   std::vector<Coord> path;
   const auto* node = this;
   while (!node->children.empty()) {
-    Coord next_kid = node->GetMostVisitedMove();
-    path.push_back(next_kid);
-    auto it = node->children.find(next_kid);
-    MG_CHECK(it != node->children.end());
+    Coord c = node->GetMostVisitedMove();
+
+    if (node->child_N(c) == 0) {
+      // In cases where nodes have been added to the tree manually (after the
+      // user has played a move, loading an SGF game), it's possible that no
+      // children have been visited. Break before adding a spurious node to the
+      // path.
+      break;
+    }
+
+    path.push_back(c);
+
+    auto it = node->children.find(c);
+    if (it == node->children.end()) {
+      // When we reach the move limit, last node will have children with visit
+      // counts but no children.
+      break;
+    }
+
     node = it->second.get();
   }
   return path;
@@ -140,7 +211,7 @@ std::string MctsNode::MostVisitedPathString() const {
     auto it = node->children.find(c);
     MG_CHECK(it != node->children.end());
     node = it->second.get();
-    absl::StrAppendFormat(&result, "%s (%d) ==> ", node->move.ToKgs(),
+    absl::StrAppendFormat(&result, "%s (%d) ==> ", node->move.ToGtp(),
                           static_cast<int>(node->N()));
   }
   absl::StrAppendFormat(&result, "Q: %0.5f", node->Q());
@@ -167,7 +238,7 @@ void MctsNode::InjectNoise(const std::array<float, kNumMoves>& noise) {
 
   float scalar = 0;
   for (int i = 0; i < kNumMoves; ++i) {
-    if (illegal_moves[i] == 0) {
+    if (legal_moves[i]) {
       scalar += noise[i];
     }
   }
@@ -177,7 +248,7 @@ void MctsNode::InjectNoise(const std::array<float, kNumMoves>& noise) {
   }
 
   for (int i = 0; i < kNumMoves; ++i) {
-    float scaled_noise = scalar * (illegal_moves[i] ? 0 : noise[i]);
+    float scaled_noise = scalar * (legal_moves[i] ? noise[i] : 0);
     edges[i].P = 0.75f * edges[i].P + 0.25f * scaled_noise;
   }
 }
@@ -186,7 +257,7 @@ MctsNode* MctsNode::SelectLeaf() {
   auto* node = this;
   for (;;) {
     // If a node has never been evaluated, we have no basis to select a child.
-    if (!node->is_expanded) {
+    if (!node->HasFlag(Flag::kExpanded)) {
       return node;
     }
     // HACK: if last move was a pass, always investigate double-pass first
@@ -203,22 +274,23 @@ MctsNode* MctsNode::SelectLeaf() {
   }
 }
 
-void MctsNode::IncorporateResults(absl::Span<const float> move_probabilities,
+void MctsNode::IncorporateResults(float value_init_penalty,
+                                  absl::Span<const float> move_probabilities,
                                   float value, MctsNode* up_to) {
-  assert(move_probabilities.size() == kNumMoves);
+  MG_DCHECK(move_probabilities.size() == kNumMoves);
   // A finished game should not be going through this code path, it should
   // directly call BackupValue on the result of the game.
-  assert(!position.is_game_over());
+  MG_DCHECK(!game_over());
 
   // If the node has already been selected for the next inference batch, we
   // shouldn't 'expand' it again.
-  if (is_expanded) {
+  if (HasFlag(Flag::kExpanded)) {
     return;
   }
 
   float policy_scalar = 0;
   for (int i = 0; i < kNumMoves; ++i) {
-    if (!illegal_moves[i]) {
+    if (legal_moves[i]) {
       policy_scalar += move_probabilities[i];
     }
   }
@@ -226,31 +298,59 @@ void MctsNode::IncorporateResults(absl::Span<const float> move_probabilities,
     policy_scalar = 1 / policy_scalar;
   }
 
-  is_expanded = true;
+  // NOTE: Minigo uses value [-1, 1] from black's perspective
+  //       Leela uses value [0, 1] from current player's perspective
+  //       AlphaGo uses [0, 1] in tree search (see matthew lai's post)
+  //
+  // The initial value of a child's Q is not perfectly understood.
+  // There are a couple of general ideas:
+  //   * Init to Parent:
+  //      Init a new child to its parent value.
+  //      We think of this as saying "The game is probably the same after
+  //      *any* move".
+  //   * Init to Draw AKA init to zero AKA "position looks even":
+  //      Init a new child to 0 for {-1, 1} or 0.5 for LZ.
+  //      We tested this in v11, because this is how we interpretted the
+  //      original AGZ paper. This doesn't make a lot of sense: The losing
+  //      player tends to explore every move before reading a second one
+  //      twice.  The winning player tends to read only the top policy move
+  //      because it has much higher value than any other move.
+  //   * Init to Parent minus a constant AKA FPU (Leela's approach):
+  //      This outperformed init to parent in eval matches when LZ tested it.
+  //      Leela-Zero uses a value around 0.15-0.25 based on policy of explored
+  //      children. LCZero uses a much large value 1.25 (they use {-1 to 1}).
+  //   * Init to Loss:
+  //      Init all children to losing.
+  //      We think of this as saying "Only a small number of moves work don't
+  //      get distracted"
+  float reduction =
+      value_init_penalty * (position.to_play() == Color::kBlack ? 1 : -1);
+  float reduced_value = std::min(1.0f, std::max(-1.0f, value - reduction));
+
+  SetFlag(Flag::kExpanded);
   for (int i = 0; i < kNumMoves; ++i) {
     // Zero out illegal moves, and re-normalize move_probabilities.
     float move_prob =
-        illegal_moves[i] ? 0 : policy_scalar * move_probabilities[i];
+        legal_moves[i] ? policy_scalar * move_probabilities[i] : 0;
 
     edges[i].original_P = edges[i].P = move_prob;
-    // Initialize child Q as current node's value, to prevent dynamics where
-    // if B is winning, then B will only ever explore 1 move, because the Q
-    // estimation will be so much larger than the 0 of the other moves.
-    //
-    // Conversely, if W is winning, then B will explore all 362 moves before
-    // continuing to explore the most favorable move. This is a waste of
-    // search.
-    //
-    // The value seeded here acts as a prior, and gets averaged into Q
-    // calculations.
-    edges[i].W = value;
+
+    // Note that we accumulate W here, rather than assigning.
+    // When performing tree search normally, we could just assign the value to W
+    // because the result of value head is known before we expand the node.
+    // When running Minigui in study move however, we load the entire game tree
+    // before starting background inference. This means that while background
+    // inferences are being performed, nodes in the tree may already be expanded
+    // and have non-zero W values at the time we need to incorporate a result
+    // for the node from the value head.
+    edges[i].W += reduced_value;
   }
   BackupValue(value, up_to);
 }
 
 void MctsNode::IncorporateEndGameResult(float value, MctsNode* up_to) {
-  assert(position.is_game_over() || position.n() == kMaxSearchDepth);
-  assert(!is_expanded);
+  MG_DCHECK(game_over() || at_move_limit());
+  MG_DCHECK(!HasFlag(Flag::kExpanded));
   BackupValue(value, up_to);
 }
 
@@ -268,24 +368,29 @@ void MctsNode::BackupValue(float value, MctsNode* up_to) {
 
 void MctsNode::AddVirtualLoss(MctsNode* up_to) {
   auto* node = this;
-  do {
+  for (;;) {
     ++node->num_virtual_losses_applied;
     node->stats->W += node->position.to_play() == Color::kBlack ? 1 : -1;
+    if (node == up_to) {
+      return;
+    }
     node = node->parent;
-  } while (node != nullptr && node != up_to);
+  }
 }
 
 void MctsNode::RevertVirtualLoss(MctsNode* up_to) {
   auto* node = this;
-  do {
+  for (;;) {
     --node->num_virtual_losses_applied;
     node->stats->W -= node->position.to_play() == Color::kBlack ? 1 : -1;
+    if (node == up_to) {
+      return;
+    }
     node = node->parent;
-  } while (node != nullptr && node != up_to);
+  }
 }
 
 void MctsNode::PruneChildren(Coord c) {
-  // TODO(tommadams): Allocate children out of a pool and return them here.
   auto child = std::move(children[c]);
   children.clear();
   children[c] = std::move(child);
@@ -305,7 +410,6 @@ std::array<float, kNumMoves> MctsNode::CalculateChildActionScore() const {
 MctsNode* MctsNode::MaybeAddChild(Coord c) {
   auto it = children.find(c);
   if (it == children.end()) {
-    // TODO(tommadams): Allocate children out of a pool.
     auto child = absl::make_unique<MctsNode>(this, c);
     MctsNode* result = child.get();
     children[c] = std::move(child);
@@ -314,4 +418,50 @@ MctsNode* MctsNode::MaybeAddChild(Coord c) {
     return it->second.get();
   }
 }
+
+bool MctsNode::HasPositionBeenPlayedBefore(zobrist::Hash stone_hash) const {
+  for (const auto* node = this; node != nullptr; node = node->parent) {
+    if (node->superko_cache != nullptr) {
+      return node->superko_cache->contains(stone_hash);
+    } else {
+      if (node->position.stone_hash() == stone_hash) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+std::string MctsNode::CalculateTreeStats() const {
+  // TODO(sethtroisi): Make this return a struct instead of string
+  long num_nodes = 0;
+  long num_leaf_nodes = 0;
+  long depth_sum = 0;
+  long depth_max = 0;
+
+  std::function<void(const MctsNode&, int)> traverse = [&](const MctsNode& node,
+                                                           int depth) {
+    num_nodes += 1;
+    num_leaf_nodes += node.N() <= 1;
+
+    depth_sum += depth;
+    if (depth > depth_max) {
+      depth_max = depth;
+    }
+
+    for (const auto& child : node.children) {
+      traverse(*child.second.get(), depth + 1);
+    }
+  };
+
+  traverse(*this, 0);
+
+  return absl::StrFormat(
+      "%d nodes, %d leaf, %.1f average children\n"
+      "%.1f average depth, %d max depth\n",
+      num_nodes, num_leaf_nodes,
+      1.0f * num_nodes / std::max(1L, num_nodes - num_leaf_nodes),
+      1.0f * depth_sum / num_nodes, depth_max);
+}
+
 }  // namespace minigo

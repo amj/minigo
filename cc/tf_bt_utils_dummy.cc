@@ -14,17 +14,47 @@
 
 #include "cc/tf_utils.h"
 
-#include "cc/check.h"
+#include "cc/logging.h"
 
 namespace minigo {
 namespace tf_utils {
 
 void WriteGameExamples(const std::string& gcp_project_name,
                        const std::string& instance_name,
-                       const std::string& table_name,
-                       const MctsPlayer& player) {
-  MG_FATAL()
-      << "Can't write TensorFlow examples to Bigtable without Bigtable support enabled. "
+                       const std::string& table_name, const Game& game) {
+  MG_LOG(FATAL)
+      << "Can't write TensorFlow examples to Bigtable without Bigtable "
+         "support enabled. "
+         "Please recompile, passing --define=bt=1 to bazel build.";
+}
+
+void WriteEvalRecord(const std::string& gcp_project_name,
+                     const std::string& instance_name,
+                     const std::string& table_name, const Game& game,
+                     const std::string& sgf_name, const std::string& tag) {
+  MG_LOG(FATAL) << "Can't write eval record to Bigtable without Bigtable "
+                   "support enabled. "
+                   "Please recompile, passing --define=bt=1 to bazel build.";
+}
+
+uint64_t IncrementGameCounter(const std::string& gcp_project_name,
+                              const std::string& instance_name,
+                              const std::string& table_name,
+                              const std::string& counter_name, size_t delta) {
+  MG_LOG(FATAL) << "Can't increment a Bigtable game counter without Bigtable "
+                   "support enabled. "
+                   "Please recompile, passing --define=bt=1 to bazel build.";
+  return 0;
+}
+
+void PortGamesToBigtable(const std::string& gcp_project_name,
+                         const std::string& instance_name,
+                         const std::string& table_name,
+                         const std::vector<std::string>& paths,
+                         int64_t game_counter) {
+  MG_LOG(FATAL)
+      << "Can't port TFRecord ZLIB files to Bigtable without Bigtable "
+         "support enabled. "
          "Please recompile, passing --define=bt=1 to bazel build.";
 }
 

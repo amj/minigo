@@ -23,6 +23,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "cc/logging.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -93,7 +94,7 @@ TEST(CoordTest, Multithreading) {
   }
 
   absl::Mutex m;
-  std::map<int, int> popped GUARDED_BY(&m);
+  std::map<int, int> popped;
 
   // Pop the ints off the queue on multiple threads.
   std::vector<std::thread> threads;
@@ -110,7 +111,7 @@ TEST(CoordTest, Multithreading) {
         // Sleep a little to give other threads a chance.
         absl::SleepFor(absl::Microseconds(1));
       }
-      std::cerr << absl::StrCat("popped ", my_popped.size(), " ints\n");
+      MG_LOG(INFO) << "popped " << my_popped.size() << " ints";
 
       // Record all the ints we popped.
       absl::MutexLock lock(&m);

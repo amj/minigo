@@ -22,10 +22,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "cc/constants.h"
 #include "cc/position.h"
+#include "cc/zobrist.h"
 
 namespace minigo {
 
@@ -68,6 +71,21 @@ class MctsNode {
            (1 + child_N(i));
   }
 
+  bool game_over() const {
+    return (position.previous_move() == Coord::kResign) ||
+           (position.previous_move() == Coord::kPass && parent != nullptr &&
+            parent->position.previous_move() == Coord::kPass);
+  }
+  bool at_move_limit() const { return position.n() >= kMaxSearchDepth; }
+
+  enum class Flag : uint8_t {
+    // Node is expanded.
+    kExpanded = (1 << 0),
+  };
+
+  void SetFlag(Flag flag) { flags |= static_cast<uint8_t>(flag); }
+  bool HasFlag(Flag flag) { return (flags & static_cast<uint8_t>(flag)) != 0; }
+
   // Finds the best move by visit count, N. Ties are broken using the child
   // action score.
   Coord GetMostVisitedMove() const;
@@ -91,7 +109,8 @@ class MctsNode {
   // called), then SelectLeaf will return that same node.
   MctsNode* SelectLeaf();
 
-  void IncorporateResults(absl::Span<const float> move_probabilities,
+  void IncorporateResults(float value_init_penalty,
+                          absl::Span<const float> move_probabilities,
                           float value, MctsNode* up_to);
 
   void IncorporateEndGameResult(float value, MctsNode* up_to);
@@ -105,18 +124,22 @@ class MctsNode {
   // Remove all children from the node except c.
   void PruneChildren(Coord c);
 
-  // TODO(tommadams): Validate returning by value has the same performance as
-  // passing a pointer to the output array.
   std::array<float, kNumMoves> CalculateChildActionScore() const;
+
+  bool HasPositionBeenPlayedBefore(zobrist::Hash stone_hash) const;
 
   float CalculateSingleMoveChildActionScore(float to_play, float U_scale,
                                             int i) const {
     float Q = child_Q(i);
     float U = U_scale * child_P(i) / (1 + child_N(i));
-    return Q * to_play + U - 1000.0f * illegal_moves[i];
+    return Q * to_play + U - 1000.0f * !legal_moves[i];
   }
 
   MctsNode* MaybeAddChild(Coord c);
+
+  // Calculate and print statistics about the tree.
+  std::string CalculateTreeStats() const;
+
 
   // Parent node.
   MctsNode* parent;
@@ -127,22 +150,34 @@ class MctsNode {
   // Move that led to this position.
   Coord move;
 
+  uint8_t flags = 0;
+
   std::array<EdgeStats, kNumMoves> edges;
 
-  // TODO(tommadams): a more compact representation.
-  std::array<bool, kNumMoves> illegal_moves;
+  std::array<bool, kNumMoves> legal_moves;
 
   // Map from move to resulting MctsNode.
-  // TODO(tommadams): use a better containiner.
-  std::unordered_map<int, std::unique_ptr<MctsNode>> children;
-
-  bool is_expanded = false;
+  absl::flat_hash_map<Coord, std::unique_ptr<MctsNode>> children;
 
   // Current board position.
   Position position;
 
   // Number of virtual losses on this node.
   int num_virtual_losses_applied = 0;
+
+  // Each position contains a Zobrist hash of its stones, which can be used for
+  // superko detection. In order to accelerate superko detection, caches of all
+  // ancestor positions are added at regular depths in the search tree. This
+  // reduces superko detection time complexity from O(N) to O(1).
+  //
+  // If non-null, superko_cache contains the Zobrist hash of all positions
+  // played to this position, including position.stone_hash().
+  // If null, clients should determine whether a position has appeared before
+  // during the game by walking up the tree (via the parent pointer), checking
+  // the position.stone_hash() of each node visited, until a node is found that
+  // contains a non-null superko_cache.
+  using SuperkoCache = absl::flat_hash_set<zobrist::Hash>;
+  std::unique_ptr<SuperkoCache> superko_cache;
 };
 
 }  // namespace minigo

@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, '.')
 
 import fire
+import random
 from absl import flags
 import kubernetes
 import yaml
@@ -26,6 +27,8 @@ import random
 from rl_loop import fsdb
 
 from ratings import ratings
+
+MAX_TASKS = 250  # Keep < 500, or k8s may not track completions accurately.
 
 
 def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=4):
@@ -54,7 +57,7 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=4):
     job_conf = yaml.load(env_job_conf)
     job_conf['spec']['completions'] = completions
 
-    resp = api_instance.create_namespaced_job('default', body=job_conf)
+    resp_bw = api_instance.create_namespaced_job('default', body=job_conf)
 
     os.environ['MODEL_WHITE'] = m1_path
     os.environ['MODEL_BLACK'] = m2_path
@@ -63,8 +66,8 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=4):
     job_conf = yaml.load(env_job_conf)
     job_conf['spec']['completions'] = completions
 
-    resp = api_instance.create_namespaced_job('default', body=job_conf)
-    return resp
+    resp_wb = api_instance.create_namespaced_job('default', body=job_conf)
+    return job_conf, resp_bw, resp_wb
 
 
 def same_run_eval(black_num=0, white_num=0, completions=4):
@@ -80,11 +83,11 @@ def same_run_eval(black_num=0, white_num=0, completions=4):
     b_model_path = os.path.join(fsdb.models_dir(), b)
     w_model_path = os.path.join(fsdb.models_dir(), w)
 
-    launch_eval_job(b_model_path + ".pb",
-                    w_model_path + ".pb",
-                    "{:d}-{:d}".format(black_num, white_num),
-                    flags.FLAGS.bucket_name,
-                    completions=completions)
+    return launch_eval_job(b_model_path + ".pb",
+                           w_model_path + ".pb",
+                           "{:d}-{:d}".format(black_num, white_num),
+                           flags.FLAGS.bucket_name,
+                           completions=completions)
 
 
 def _append_pairs(new_pairs, dry_run):
@@ -130,12 +133,14 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
       should be around 500 to keep kubernetes from losing track of completions
     """
     desired_pairs = restore_pairs() or []
+    random.shuffle(desired_pairs)
     last_model_queued = restore_last_model()
 
     if sgf_dir:
         sgf_dir = os.path.abspath(sgf_dir)
 
     api_instance = get_api()
+    toggle = True
     try:
         while True:
             last_model = fsdb.get_latest_pb()[0]
@@ -150,18 +155,23 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
             cleanup(api_instance)
             random.shuffle(desired_pairs)
             r = api_instance.list_job_for_all_namespaces()
-            if len(r.items) < max_jobs:
+            if r.items:
+                tasks = sum([item.spec.completions for item in r.items])
+            else:
+                tasks = 0
+            if tasks < MAX_TASKS:
                 if len(desired_pairs) == 0:
                     if sgf_dir and len(r.items) < 15:
                         print("Out of pairs!  Syncing new eval games...")
                         ratings.sync(sgf_dir)
                         print("Updating ratings and getting suggestions...")
-                        if last_model_queued % 3 == 0:
+                        if toggle:
                           print("Pairing the top of the table.")
                           add_top_pairs()
                         else:
-                          print("Pairing the most-unclear ratings.")
+                          print("Pairing the least-known models.")
                           add_uncertain_pairs()
+                        toggle = not toggle
                         for modelnum, rate in ratings.top_n():
                           print("{:>30}: {:0.3f} ({:0.3f})".format(modelnum, rate[0], rate[1]))
                         desired_pairs = restore_pairs() or []
@@ -179,12 +189,14 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
                     raise
                 save_pairs(sorted(desired_pairs))
                 save_last_model(last_model)
-                time.sleep(6)
+                time.sleep(1)
 
             else:
-                print("{}\t{} jobs outstanding. ({} to be scheduled)".format(
+                print("{}\t {} finished / {} requested. "
+                      "({} jobs, {} pairs to be scheduled)".format(
                       time.strftime("%I:%M:%S %p"),
-                      len(r.items), len(desired_pairs)))
+                      sum([i.status.succeeded or 0 for i in r.items]),
+                      tasks, len(r.items), len(desired_pairs)))
                 time.sleep(60)
     except:
         print("Unfinished pairs:")

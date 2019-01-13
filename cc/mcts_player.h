@@ -17,8 +17,8 @@
 
 #include <cmath>
 #include <cstdint>
-#include <iostream>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -28,6 +28,7 @@
 #include "cc/algorithm.h"
 #include "cc/constants.h"
 #include "cc/dual_net/dual_net.h"
+#include "cc/game.h"
 #include "cc/mcts_node.h"
 #include "cc/position.h"
 #include "cc/random.h"
@@ -42,20 +43,19 @@ float TimeRecommendation(int move_num, float seconds_per_move, float time_limit,
 class MctsPlayer {
  public:
   struct Options {
+    // Game-level options.
+    Game::Options game_options;
+
     bool inject_noise = true;
     bool soft_pick = true;
     bool random_symmetry = true;
-    float resign_threshold = -0.95;
 
-    // We use a separate resign_enabled flag instead of setting the
-    // resign_threshold to -1 for games where resignation is diabled. This
-    // enables us to report games where the eventual winner would have
-    // incorrectly resigned early, had resignations been enabled.
-    bool resign_enabled = true;
+    // See mcts_node.cc for details.
+    // Default (0.0) is init-to-parent.
+    float value_init_penalty = 0.0;
 
     // TODO(tommadams): rename batch_size to virtual_losses.
     int batch_size = 8;
-    float komi = kDefaultKomi;
     std::string name = "minigo";
 
     // Seed used from random permutations.
@@ -81,6 +81,13 @@ class MctsPlayer {
     // If true, print debug info to stderr.
     bool verbose = true;
 
+    // If true, children of the current root node are pruned when a move is
+    // played. Under normal play, only the descendents of the move played ever
+    // have a chance of being visited again during tree search. However, when
+    // using Minigo to explore different variations and ponder about the best
+    // moves, it makes sense to keep the full tree around.
+    bool prune_orphaned_nodes = true;
+
     friend std::ostream& operator<<(std::ostream& ios, const Options& options);
   };
 
@@ -91,6 +98,74 @@ class MctsPlayer {
     const MctsNode* node = nullptr;
   };
 
+  // If position is non-null, the player will be initilized with that board
+  // state. Otherwise, the player is initialized with an empty board with black
+  // to play.
+  MctsPlayer(std::unique_ptr<DualNet> network, const Options& options);
+
+  virtual ~MctsPlayer();
+
+  void InitializeGame(const Position& position);
+
+  virtual void NewGame();
+
+  virtual Coord SuggestMove();
+
+  // Plays the move at point c.
+  // If game is non-null, adds a new move to the game's move history and sets
+  // the game over state if appropriate.
+  virtual bool PlayMove(Coord c, Game* game);
+
+  bool ShouldResign() const;
+
+  // Returns a string containing the list of all models used for inference, and
+  // which moves they were used for.
+  std::string GetModelsUsedForInference() const;
+
+  // Returns the root of the current search tree, i.e. the current board state.
+  MctsNode* root() { return root_; }
+  const MctsNode* root() const { return root_; }
+
+  const Options& options() const { return options_; }
+  const std::string& name() const { return options_.name; }
+  DualNet* network() { return network_.get(); }
+
+ protected:
+  // Path in the game tree from leaf to root.
+  struct TreePath {
+    TreePath(MctsNode* root, MctsNode* leaf) : root(root), leaf(leaf) {}
+    MctsNode* root;
+    MctsNode* leaf;
+  };
+
+  Options* mutable_options() { return &options_; }
+
+  Coord PickMove();
+
+  // Resets the root_ node back to the game_root_, clearing the game history but
+  // preserving the game tree.
+  // This is used to rewind the game during review.
+  void ResetRoot();
+
+  // Moves the root_ node up to its parent, popping the last move off the game
+  // history but preserving the game tree.
+  bool UndoMove(Game* game);
+
+  void TreeSearch();
+
+  void SelectLeaves(MctsNode* root, int num_leaves,
+                    std::vector<MctsPlayer::TreePath>* paths);
+
+  // Returns the root of the game tree.
+  MctsNode* game_root() { return &game_root_; }
+  const MctsNode* game_root() const { return &game_root_; }
+
+  Random* rnd() { return &rnd_; }
+
+  // Run inference for the given leaf nodes & incorportate the inference output.
+  virtual void ProcessLeaves(absl::Span<TreePath> paths, bool random_symmetry);
+
+ private:
   // State that tracks which model is used for each inference.
   struct InferenceInfo {
     InferenceInfo(std::string model, int first_move)
@@ -113,85 +188,12 @@ class MctsPlayer {
     int last_move = 0;
   };
 
-  // If position is non-null, the player will be initilized with that board
-  // state. Otherwise, the player is initialized with an empty board with black
-  // to play.
-  MctsPlayer(std::unique_ptr<DualNet> network, const Options& options);
-
-  virtual ~MctsPlayer();
-
-  void InitializeGame(const Position& position);
-
-  void NewGame();
-
-  virtual Coord SuggestMove();
-
-  void PlayMove(Coord c);
-
-  bool ShouldResign() const;
-
-  void GetNodeFeatures(const MctsNode* node, DualNet::BoardFeatures* features);
-
-  // Returns the root of the current search tree, i.e. the current board state.
-  MctsNode* root() { return root_; }
-  const MctsNode* root() const { return root_; }
-
-  // Returns true if the game is over, either because both players passed, one
-  // player resigned, or the game reached the maximum number of allowed moves.
-  bool game_over() const { return game_over_; }
-
-  // Returns the result of the game:
-  //   +1.0 if black won.
-  //    0.0 if the game was drawn.
-  //   -1.0 if white won.
-  // Check fails if the game is not yet over.
-  float result() const {
-    MG_CHECK(game_over_);
-    return result_;
-  }
-
-  // Return a text description of the game result, e.g. "B+R", "W+1.5".
-  // Check fails if the game is not yet over.
-  const std::string& result_string() const {
-    MG_CHECK(game_over_);
-    return result_string_;
-  }
-
-  const Options& options() const { return options_; }
-  const std::vector<History>& history() const { return history_; }
-  const std::string& name() const { return options_.name; }
-  const std::vector<InferenceInfo>& inferences() const { return inferences_; }
-
-  // These methods are protected to facilitate direct testing.
- protected:
-  Options* mutable_options() { return &options_; }
-
-  Coord PickMove();
-
-  // Returns the list of nodes that TreeSearch performed inference on.
-  // The contents of the returned Span is valid until the next call TreeSearch.
-  virtual absl::Span<MctsNode* const> TreeSearch();
-
-  // Returns the root of the game tree.
-  MctsNode* game_root() { return &game_root_; }
-  const MctsNode* game_root() const { return &game_root_; }
-
-  Random* rnd() { return &rnd_; }
-
-  std::string FormatScore(float score) const;
-
-  DualNet* network() { return network_.get(); }
-
-  // Run inference for the given leaf nodes & incorportate the inference output.
-  void ProcessLeaves(absl::Span<MctsNode*> leaves);
-
- private:
-  void PushHistory(Coord c);
+  void UpdateGame(Coord c, Game* game);
 
   std::unique_ptr<DualNet> network_;
   int temperature_cutoff_;
 
-  MctsNode::EdgeStats dummy_stats_;
+  MctsNode::EdgeStats root_stats_;
 
   MctsNode* root_;
   MctsNode game_root_;
@@ -203,17 +205,11 @@ class MctsPlayer {
 
   Options options_;
 
-  float result_ = 0;
-  std::string result_string_;
-  bool game_over_ = false;
-
-  std::vector<History> history_;
-
   std::string model_;
   std::vector<InferenceInfo> inferences_;
 
   // Vectors reused when running TreeSearch.
-  std::vector<MctsNode*> leaves_;
+  std::vector<TreePath> tree_search_paths_;
   std::vector<DualNet::BoardFeatures> features_;
   std::vector<DualNet::Output> outputs_;
   std::vector<symmetry::Symmetry> symmetries_used_;

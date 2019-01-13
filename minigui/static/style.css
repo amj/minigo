@@ -64,15 +64,9 @@ body {
 }
 
 .winrate-graph {
-  cursor: crosshair;
   background-color: #2c241e;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
 }
-
-#black-player { background-color: #222; color: #eee; }
-#white-player { background-color: #fff; color: #222; }
-#pass { background-color: #9c9389; color: #222; }
-#reset { background-color: #8c6845; color: #ffe; }
 
 .button {
   font-family: sans-serif;
@@ -84,6 +78,8 @@ body {
   box-shadow: 0 0 8px rgba(0, 0, 0, 0.3);
 }
 .button:hover { opacity: 0.8; }
+
+.pointer { cursor: pointer; }
 
 .log-cmd { font-style: italic; padding-left: 12px; }
 

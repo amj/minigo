@@ -26,10 +26,12 @@ sys.path.insert(0, '.')
 
 from absl import app, flags
 from tensorflow import gfile
+import tensorflow as tf
 from rl_loop import fsdb
 import mask_flags
 from rl_loop import shipname
 import utils
+import dual_net
 
 flags.DEFINE_string('pro_dataset', None,
                     'Location of preprocessed pro dataset for validation')
@@ -41,7 +43,10 @@ flags.declare_key_flag('bucket_name')
 FLAGS = flags.FLAGS
 
 try:
-    TPU_NAME = os.environ['TPU_NAME']
+    if 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS' in os.environ:
+        TPU_NAME = os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
+    else:
+        TPU_NAME = os.environ['TPU_NAME']
 except KeyError:
     raise Exception("Must have $TPU_NAME configured")
 
@@ -52,18 +57,47 @@ def train():
     new_model_num = model_num + 1
     new_model_name = shipname.generate(new_model_num)
     print("New model will be {}".format(new_model_name))
-    training_file = os.path.join(
-        fsdb.golden_chunk_dir(), str(new_model_num) + '.tfrecord.zz')
-    while not gfile.Exists(training_file):
-        print("Waiting for", training_file)
-        time.sleep(1 * 60)
     save_file = os.path.join(fsdb.models_dir(), new_model_name)
 
-    cmd = ['python3', 'train.py', training_file,
+    # TODO(jacksona): Refactor train.py to take the filepath as a flag.
+    cmd = ['python3', 'train.py', '__unused_file__',
            '--use_tpu',
+           '--use_bt',
+           '--work_dir={}'.format(fsdb.working_dir()),
            '--tpu_name={}'.format(TPU_NAME),
            '--flagfile=rl_loop/distributed_flags',
            '--export_path={}'.format(save_file)]
+
+    completed_process = mask_flags.run(cmd)
+    if completed_process.returncode > 0:
+        print("Training failed!")
+        return completed_process
+
+    # Train.py already copies the {data,index,meta} files to $BUCKET/models
+    # Persist the checkpoint two ways:
+    # Freeze the .ckpt file in the work_dir for the TPU selfplayers
+    # Freeze a non-tpu version of the graph for later GPU use.
+    latest_checkpoint = tf.train.latest_checkpoint(fsdb.working_dir())
+    p = freeze(latest_checkpoint, rewrite_tpu=True)
+    if p.returncode > 0:
+        print("== TPU freeze failed!")
+        return p
+
+    p = freeze(save_file, rewrite_tpu=False)
+    if p.returncode > 0:
+        print("== Model freeze failed!")
+        return p
+
+    return completed_process
+
+def freeze(save_path, rewrite_tpu=False):
+    cmd = ['python3', 'freeze_graph.py',
+           '--work_dir={}'.format(fsdb.working_dir()),
+           '--model_path={}'.format(save_path)]
+
+    if rewrite_tpu:
+        cmd.extend(['--use_tpu',
+                    '--tpu_name={}'.format(TPU_NAME)])
 
     return mask_flags.run(cmd)
 
@@ -90,6 +124,7 @@ def validate_pro():
     cmd = ['python3', 'validate.py', FLAGS.pro_dataset,
            '--use_tpu',
            '--tpu_name={}'.format(TPU_NAME),
+           '--work_dir={}'.format(fsdb.working_dir()),
            '--flagfile=rl_loop/distributed_flags',
            '--validate_name=pro']
     mask_flags.run(cmd)
@@ -97,16 +132,19 @@ def validate_pro():
 
 def loop(unused_argv):
     while True:
-        print("=" * 40)
+        print("=" * 40, flush=True)
         with utils.timer("Train"):
             completed_process = train()
         if completed_process.returncode > 0:
-            print("Training failed! Skipping validation...")
-            continue
+            print("Training failed, aborting.")
+            sys.exit(1)
+
         with utils.timer("Validate"):
-            validate_pro()
-            validate_holdout_selfplay()
+            if not FLAGS.pro_dataset:
+                print("*** --pro_dataset not set, skipping pro validation ***")
+            else:
+                validate_pro()
+            #validate_holdout_selfplay()
 
 if __name__ == '__main__':
-    flags.mark_flag_as_required('pro_dataset')
     app.run(loop)

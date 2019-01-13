@@ -12,26 +12,53 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import {Nullable} from './base'
+import {Position} from './position'
 import {getElement, pixelRatio} from './util'
+import {View} from './view'
 
-type MoveChangedCallback = (move: number | null) => void;
+const MIN_POINTS = 10;
 
-class WinrateGraph {
+function arraysApproxEqual(a: number[], b: number[], threshold: number) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; ++i) {
+    if (Math.abs(a[i] - b[i]) > threshold) {
+      return false;
+    }
+  }
+  return true;
+}
+
+class WinrateGraph extends View {
   protected ctx: CanvasRenderingContext2D;
-  protected points = new Array<[number, number]>();
   protected marginTop: number;
   protected marginBottom: number;
   protected marginLeft: number;
   protected marginRight: number;
   protected textHeight: number;
-  protected minPoints = 10;
 
   protected w: number;
   protected h: number;
-  protected selectedMove: number | null = null;
-  protected moveChangedCallback: MoveChangedCallback | null = null;
+
+  protected mainLine: number[] = [];
+  protected variation: number[] = [];
+
+  // Horizontal scaling factor used when plotting. It's the maximum move number
+  // seen, with a minimum of MIN_POINTS. Note that because win rate evaluation
+  // is computed lazily after an SGF file has been loaded, the maximum move
+  // number can be larger than the prefix of the current variation that we have
+  // data to plot. Scaling by the maximum move number therefore gives an
+  // indication to the user how many more moves need to be evaluated before we
+  // have a win rate estimation for the complete game.
+  protected xScale = MIN_POINTS;
+
+  protected rootPosition: Nullable<Position> = null;
+  protected activePosition: Nullable<Position> = null;
 
   constructor(parent: HTMLElement | string) {
+    super();
     if (typeof(parent) == 'string') {
       parent = getElement(parent);
     }
@@ -45,17 +72,7 @@ class WinrateGraph {
       this.resizeCanvas();
       this.draw();
     });
-
-    canvas.addEventListener('mousemove', (e) => {
-      this.onMouseMove(e.offsetX, e.offsetY);
-    });
-    canvas.addEventListener('mouseleave', () => {
-      this.onMouseLeave();
-    });
-
-    this.draw();
   }
-
 
   private resizeCanvas() {
     let pr = pixelRatio();
@@ -75,60 +92,91 @@ class WinrateGraph {
     this.textHeight = 0.06 * this.h;
   }
 
-  clear() {
-    this.points = [];
+  newGame(rootPosition: Position) {
+    this.rootPosition = rootPosition;
+    this.activePosition = rootPosition;
+    this.mainLine = [];
+    this.variation = [];
+    this.xScale = MIN_POINTS;
     this.draw();
   }
 
-  // Sets the predicted winrate for the given move.
-  setWinrate(move: number, winrate: number) {
-    this.points[move] = [move, winrate];
-    this.draw();
+  setActive(position: Position) {
+    if (position != this.activePosition) {
+      this.xScale = Math.max(this.xScale, position.moveNum);
+      this.activePosition = position;
+      this.update(position);
+      this.draw();
+    }
   }
 
-  onMoveChanged(callback: MoveChangedCallback) {
-    this.moveChangedCallback = callback;
+  update(position: Position) {
+    if (this.rootPosition == null || this.activePosition == null) {
+      return;
+    }
+    if (!position.isMainLine) {
+      // The updated position isn't on the main line, we may not need to update
+      // anything.
+      if (this.activePosition.isMainLine) {
+        // Only showing the main line, nothing to do.
+        return;
+      } else if (this.activePosition.getFullLine().indexOf(position) == -1) {
+        // This position isn't from the current variation, nothing to do.
+        return;
+      }
+    }
+
+    // Always check if the main line plot needs updating, since the main line
+    // and any currently active variation likely share a prefix of moves.
+    let anythingChanged = false;
+    let mainLine = this.getWinRate(this.rootPosition.getFullLine());
+    if (!arraysApproxEqual(mainLine, this.mainLine, 0.001)) {
+      anythingChanged = true;
+      this.mainLine = mainLine;
+    }
+
+    // If the updated position is a variation, check if the variation plot needs
+    // updating.
+    if (!position.isMainLine) {
+      let variation = this.getWinRate(position.getFullLine());
+      if (!arraysApproxEqual(variation, this.variation, 0.001)) {
+        anythingChanged = true;
+        this.variation = variation;
+      }
+    }
+
+    if (anythingChanged) {
+      this.draw();
+    }
   }
 
-  private draw() {
+  drawImpl() {
     let pr = pixelRatio();
     let ctx = this.ctx;
     let w = this.w;
     let h = this.h;
-    let xScale = Math.max(this.points.length - 1, this.minPoints);
 
     // Reset the transform to identity and clear.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'butt';
+
     // Apply a translation such that (0, 0) is the center of the pixel at the
     // top left of the graph.
     ctx.translate(this.marginLeft + 0.5, this.marginTop + 0.5);
 
-    // Round caps & joins look nice.
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Draw the resign threshold lines.
-    ctx.lineWidth = 1 * pr;
-    ctx.strokeStyle = '#56504b';
-    ctx.beginPath();
-    ctx.moveTo(0, Math.round(0.95 * h));
-    ctx.lineTo(w, Math.round(0.95 * h));
-    ctx.moveTo(0, Math.round(0.05 * h));
-    ctx.lineTo(w, Math.round(0.05 * h));
-    ctx.stroke();
-
-    // Draw the horizontal & vertical axis.
-    let lineWidth = 3 * pr;
-    ctx.lineWidth = lineWidth;
+    // Draw the horizontal & vertical axis and the move.
+    ctx.lineWidth = pr;
 
     ctx.strokeStyle = '#96928f';
+
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(0, h);
-    ctx.moveTo(0, 0.5 * h);
-    ctx.lineTo(w, 0.5 * h);
+    ctx.moveTo(0, Math.floor(0.5 * h));
+    ctx.lineTo(w, Math.floor(0.5 * h));
     ctx.stroke();
 
     // Draw the Y axis labels.
@@ -139,80 +187,75 @@ class WinrateGraph {
     ctx.fillText('B', -0.5 * this.textHeight, Math.round(0.05 * h));
     ctx.fillText('W', -0.5 * this.textHeight, Math.round(0.95 * h));
 
-    // Offset the start of the X axis by the widh of the vertical axis.
-    // It looks nicer that way.
-    let xOfs = Math.floor(lineWidth / 2);
-    ctx.translate(xOfs, 0);
-    w -= xOfs;
-
-    // Draw the selected move (if any).
-    if (this.selectedMove !== null) {
-      let x = Math.round(w * this.selectedMove / xScale);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = '#96928f';
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
+    if (this.activePosition == null) {
+      return;
     }
 
-    // Draw the graph.
-    if (this.points.length >= 2) {
-      ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = '#eee';
-      ctx.beginPath();
-      let [x, y] = this.points[0];
-      ctx.moveTo(w * x / xScale, h * (0.5 - 0.5 * y));
-      for (let i = 1; i < this.points.length; ++i) {
-        [x, y] = this.points[i];
-        ctx.lineTo(w * x / xScale, h * (0.5 - 0.5 * y));
-      }
-      ctx.stroke();
+    let moveNum = this.activePosition.moveNum;
+    ctx.setLineDash([1, 2]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(w * moveNum / this.xScale), 0.5);
+    ctx.lineTo(Math.round(w * moveNum / this.xScale), h - 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (this.activePosition.isMainLine) {
+      this.drawPlot(this.mainLine, pr, '#ffe');
+    } else {
+      this.drawPlot(this.mainLine, pr, '#615b56');
+      this.drawPlot(this.variation, pr, '#ffe');
     }
 
     // Draw the value label.
     ctx.textAlign = 'left';
     ctx.fillStyle = '#ffe';
-    let y;
-    if (this.points.length > 0) {
-      y = this.points[this.points.length - 1][1];
-    } else {
-      y = 0;
+    let q = 0;
+    let values =
+        this.activePosition.isMainLine ? this.mainLine : this.variation;
+    if (values.length > 0) {
+      q = values[Math.min(moveNum, values.length - 1)];
     }
-    let score = y;
-    y = h * (0.5 - 0.5 * y);
+    let score = 50 + 50 * q;
+    let y = h * (0.5 - 0.5 * q);
     let txt: string;
-    if (score > 0) {
-      txt = `B:${Math.round(score * 100)}%`;
+    if (score > 50) {
+      txt = `B:${Math.round(score)}%`;
     } else {
-      txt = `W:${Math.round(-score * 100)}%`;
+      txt = `W:${Math.round(100 - score)}%`;
     }
     ctx.fillText(txt, w + 8, y);
   }
 
-  private onMouseMove(x: number, y: number) {
-    if (this.points.length < 2) {
-      return;
-    }
-    let pr = pixelRatio();
-    let n = Math.max(this.minPoints, this.points.length - 1);
-    let newMove = Math.round(n * (pr * x - this.marginLeft) / this.w);
-    newMove = Math.max(0, Math.min(newMove, this.points.length - 1));
-    if (newMove != this.selectedMove) {
-      this.selectedMove = newMove;
-      this.draw();
-      if (this.moveChangedCallback) {
-        this.moveChangedCallback(this.selectedMove);
+  // Returns the win rate estimation for the prefix of `variation` that has
+  // valid Q values (the backend has either performed tree search or win rate
+  // evaluation on every position in the prefix at least once).
+  private getWinRate(variation: Position[]) {
+    let result: number[] = [];
+    for (let p of variation) {
+      if (p.q == null) {
+        // Stop when we reach the first position that doesn't have a valid Q.
+        break;
       }
+      result.push(p.q);
     }
+    return result;
   }
 
-  private onMouseLeave() {
-    this.selectedMove = null;
-    this.draw();
-    if (this.moveChangedCallback) {
-      this.moveChangedCallback(this.selectedMove);
+  private drawPlot(values: number[], lineWidth: number, style: string) {
+    if (values.length < 2) {
+      return;
     }
+
+    let ctx = this.ctx;
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = style;
+    ctx.beginPath();
+    ctx.moveTo(0, this.h * (0.5 - 0.5 * values[0]));
+    for (let x = 0; x < values.length; ++x) {
+      let y = values[x];
+      ctx.lineTo(this.w * x / this.xScale, this.h * (0.5 - 0.5 * y));
+    }
+    ctx.stroke();
   }
 }
 

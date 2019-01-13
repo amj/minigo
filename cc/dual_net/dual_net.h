@@ -23,9 +23,6 @@
 #include "absl/types/span.h"
 #include "cc/constants.h"
 #include "cc/position.h"
-#include "gflags/gflags.h"
-
-DECLARE_int32(batch_size);
 
 namespace minigo {
 
@@ -55,6 +52,11 @@ class DualNet {
   using StoneFeatures = std::array<float, kNumStoneFeatures>;
   using BoardFeatures = std::array<float, kNumBoardFeatures>;
 
+  enum class InputLayout {
+    kNHWC,
+    kNCHW,
+  };
+
   // Generates the board features from the history of recent moves, where
   // history[0] is the current board position, and history[i] is the board
   // position from i moves ago.
@@ -71,10 +73,38 @@ class DualNet {
 
   virtual ~DualNet();
 
-  // Runs inference on a batch of input features. Implementations must handle
-  // features of size up to FLAGS_batch_size.
+  // Runs inference on a batch of input features.
+  // TODO(tommadams): rename model -> model_name.
   virtual void RunMany(std::vector<const BoardFeatures*> features,
                        std::vector<Output*> outputs, std::string* model) = 0;
+
+  // Potentially prepares the DualNet to avoid expensive operations during
+  // RunMany() calls with up to 'capacity' features.
+  virtual void Reserve(size_t capacity);
+
+  virtual InputLayout GetInputLayout() const;
+};
+
+// Factory that creates DualNet instances.
+// All implementations are required to be thread safe.
+class DualNetFactory {
+ public:
+  virtual ~DualNetFactory();
+
+  // Returns the ideal number of inference requests in flight for DualNet
+  // instances created by this factory.
+  virtual int GetBufferCount() const;
+
+  // TODO(tommadams): rename model to model_path
+  virtual std::unique_ptr<DualNet> NewDualNet(const std::string& model) = 0;
+
+  // TODO(tommadams): StartGame and EndGame are only required by the
+  // BatchingDualNetFactory; after main.cc has been split into multiple
+  // binaries (selfplay, gtp, eval, etc) refactor those binaries to work with
+  // the BatchingDualNetFactory subclass rather than the abstract DualNetFactory
+  // and remove StartGame and EndGame from this base class.
+  virtual void StartGame(DualNet* black, DualNet* white);
+  virtual void EndGame(DualNet* black, DualNet* white);
 };
 
 }  // namespace minigo

@@ -15,8 +15,6 @@
 #include "cc/mcts_player.h"
 
 #include <algorithm>
-#include <cmath>
-#include <iostream>
 #include <sstream>
 #include <utility>
 
@@ -25,7 +23,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/time/clock.h"
-#include "cc/check.h"
+#include "cc/logging.h"
 #include "cc/random.h"
 #include "cc/symmetries.h"
 
@@ -35,9 +33,10 @@ std::ostream& operator<<(std::ostream& os, const MctsPlayer::Options& options) {
   os << "name:" << options.name << " inject_noise:" << options.inject_noise
      << " soft_pick:" << options.soft_pick
      << " random_symmetry:" << options.random_symmetry
-     << " resign_threshold:" << options.resign_threshold
-     << " resign_enabled:" << options.resign_enabled
-     << " batch_size:" << options.batch_size << " komi:" << options.komi
+     << " resign_threshold:" << options.game_options.resign_threshold
+     << " resign_enabled:" << options.game_options.resign_enabled
+     << " batch_size:" << options.batch_size
+     << " komi:" << options.game_options.komi
      << " num_readouts:" << options.num_readouts
      << " seconds_per_move:" << options.seconds_per_move
      << " time_limit:" << options.time_limit
@@ -73,18 +72,19 @@ float TimeRecommendation(int move_num, float seconds_per_move, float time_limit,
 
 MctsPlayer::MctsPlayer(std::unique_ptr<DualNet> network, const Options& options)
     : network_(std::move(network)),
-      game_root_(&dummy_stats_, {&bv_, &gv_, Color::kBlack}),
+      game_root_(&root_stats_, {&bv_, &gv_, Color::kBlack}),
       rnd_(options.random_seed),
       options_(options) {
-  options_.resign_threshold = -std::abs(options_.resign_threshold);
+  MG_CHECK(options.game_options.resign_threshold < 0);
+
   // When to do deterministic move selection: 30 moves on a 19x19, 6 on 9x9.
   // divide 2, multiply 2 guarentees that white and black do even number.
   temperature_cutoff_ = !options_.soft_pick ? -1 : (((kN * kN / 12) / 2) * 2);
   root_ = &game_root_;
 
   if (options_.verbose) {
-    std::cerr << "MctsPlayer options: " << options_ << "\n";
-    std::cerr << "Random seed used: " << rnd_.seed() << "\n";
+    MG_LOG(INFO) << "MctsPlayer options: " << options_;
+    MG_LOG(INFO) << "Random seed used: " << rnd_.seed();
   }
 
   InitializeGame({&bv_, &gv_, Color::kBlack});
@@ -92,25 +92,37 @@ MctsPlayer::MctsPlayer(std::unique_ptr<DualNet> network, const Options& options)
 
 MctsPlayer::~MctsPlayer() {
   if (options_.verbose) {
-    std::cerr << "Inference history:" << std::endl;
+    MG_LOG(INFO) << "Inference history:";
     for (const auto& info : inferences_) {
-      std::cerr << info.model << " [" << info.first_move << ", "
-                << info.last_move << "]" << std::endl;
+      MG_LOG(INFO) << info.model << " [" << info.first_move << ", "
+                   << info.last_move << "]";
     }
   }
 }
 
 void MctsPlayer::InitializeGame(const Position& position) {
-  game_root_ = {&dummy_stats_, Position(&bv_, &gv_, position)};
-  root_ = &game_root_;
-  game_over_ = false;
+  root_stats_ = {};
+  game_root_ = MctsNode(&root_stats_, Position(&bv_, &gv_, position));
+  ResetRoot();
 }
 
 void MctsPlayer::NewGame() {
-  game_root_ = MctsNode(&dummy_stats_, {&bv_, &gv_, Color::kBlack});
-  root_ = &game_root_;
-  game_over_ = false;
-  history_.clear();
+  root_stats_ = {};
+  game_root_ = MctsNode(&root_stats_, {&bv_, &gv_, Color::kBlack});
+  ResetRoot();
+}
+
+void MctsPlayer::ResetRoot() { root_ = &game_root_; }
+
+bool MctsPlayer::UndoMove(Game* game) {
+  if (root_ == &game_root_) {
+    return false;
+  }
+  root_ = root_->parent;
+  if (game != nullptr) {
+    game->UndoMove();
+  }
+  return true;
 }
 
 Coord MctsPlayer::SuggestMove() {
@@ -120,9 +132,10 @@ Coord MctsPlayer::SuggestMove() {
   // must be expanded. The root will always be expanded unless this is the first
   // time SuggestMove has been called for a game, or PlayMove was called without
   // a prior call to SuggestMove.
-  if (!root_->is_expanded) {
-    auto* first_node = root_->SelectLeaf();
-    ProcessLeaves({&first_node, 1});
+  if (!root_->HasFlag(MctsNode::Flag::kExpanded)) {
+    tree_search_paths_.clear();
+    SelectLeaves(root_, 1, &tree_search_paths_);
+    ProcessLeaves(absl::MakeSpan(tree_search_paths_), options_.random_symmetry);
   }
 
   if (options_.inject_noise) {
@@ -153,11 +166,11 @@ Coord MctsPlayer::SuggestMove() {
   auto elapsed = absl::Now() - start;
   elapsed = elapsed * 100 / num_readouts;
   if (options_.verbose) {
-    std::cerr << "Milliseconds per 100 reads: "
-              << absl::ToInt64Milliseconds(elapsed) << "ms"
-              << " over " << num_readouts
-              << " readouts (batched: " << options_.batch_size << ")"
-              << std::endl;
+    MG_LOG(INFO) << "Milliseconds per 100 reads: "
+                 << absl::ToInt64Milliseconds(elapsed) << "ms"
+                 << " over " << num_readouts
+                 << " readouts (batched: " << options_.batch_size << ")";
+    MG_LOG(INFO) << root_->CalculateTreeStats();
   }
 
   if (ShouldResign()) {
@@ -171,7 +184,7 @@ Coord MctsPlayer::PickMove() {
   if (root_->position.n() >= temperature_cutoff_) {
     Coord c = root_->GetMostVisitedMove();
     if (options_.verbose) {
-      std::cerr << "Picked arg_max " << c << std::endl;
+      MG_LOG(INFO) << "Picked arg_max " << c;
     }
     return c;
   }
@@ -192,106 +205,105 @@ Coord MctsPlayer::PickMove() {
   float e = rnd_();
   Coord c = SearchSorted(cdf, e * cdf.back());
   if (options_.verbose) {
-    std::cerr << "Picked rnd(" << e << ") " << c << std::endl;
+    MG_LOG(INFO) << "Picked rnd(" << e << ") " << c;
   }
   MG_DCHECK(root_->child_N(c) != 0);
   return c;
 }
 
-absl::Span<MctsNode* const> MctsPlayer::TreeSearch() {
-  int batch_size = options_.batch_size;
-  int max_iterations = batch_size * 2;
+void MctsPlayer::TreeSearch() {
+  tree_search_paths_.clear();
+  SelectLeaves(root_, options_.batch_size, &tree_search_paths_);
+  ProcessLeaves(absl::MakeSpan(tree_search_paths_), options_.random_symmetry);
+}
 
-  leaves_.resize(0);
+void MctsPlayer::SelectLeaves(MctsNode* root, int num_leaves,
+                              std::vector<MctsPlayer::TreePath>* paths) {
+  int max_iterations = num_leaves * 2;
+  int num_selected = 0;
   for (int i = 0; i < max_iterations; ++i) {
-    auto* leaf = root_->SelectLeaf();
-    if (leaf == nullptr) {
-      continue;
-    }
-    if (leaf->position.is_game_over() ||
-        leaf->position.n() >= kMaxSearchDepth) {
-      float value = leaf->position.CalculateScore(options_.komi) > 0 ? 1 : -1;
-      leaf->IncorporateEndGameResult(value, root_);
+    auto* leaf = root->SelectLeaf();
+    if (leaf->game_over() || leaf->at_move_limit()) {
+      float value =
+          leaf->position.CalculateScore(options_.game_options.komi) > 0 ? 1
+                                                                        : -1;
+      leaf->IncorporateEndGameResult(value, root);
     } else {
-      leaf->AddVirtualLoss(root_);
-      leaves_.push_back(leaf);
-      if (static_cast<int>(leaves_.size()) == batch_size) {
+      leaf->AddVirtualLoss(root);
+      paths->emplace_back(root, leaf);
+      if (++num_selected == num_leaves) {
         break;
       }
     }
   }
-
-  if (!leaves_.empty()) {
-    ProcessLeaves(absl::MakeSpan(leaves_));
-    for (auto* leaf : leaves_) {
-      leaf->RevertVirtualLoss(root_);
-    }
-  }
-
-  return absl::MakeConstSpan(leaves_);
 }
 
 bool MctsPlayer::ShouldResign() const {
-  return options_.resign_enabled &&
-         root_->Q_perspective() < options_.resign_threshold;
+  return options_.game_options.resign_enabled &&
+         root_->Q_perspective() < options_.game_options.resign_threshold;
 }
 
-void MctsPlayer::PlayMove(Coord c) {
-  if (game_over_) {
-    std::cerr << "ERROR: can't play move " << c << ", game is over"
-              << std::endl;
-    return;
+std::string MctsPlayer::GetModelsUsedForInference() const {
+  std::vector<std::string> parts;
+  parts.reserve(inferences_.size());
+  for (const auto& info : inferences_) {
+    parts.push_back(absl::StrCat(info.model, "(", info.first_move, ",",
+                                 info.last_move, ")"));
+  }
+  return absl::StrJoin(parts, ", ");
+}
+
+bool MctsPlayer::PlayMove(Coord c, Game* game) {
+  if (root_->game_over()) {
+    MG_LOG(ERROR) << "can't play move " << c << ", game is over";
+    return false;
   }
 
   // Handle resignations.
   if (c == Coord::kResign) {
-    if (root_->position.to_play() == Color::kBlack) {
-      result_ = -1;
-      result_string_ = "W+R";
-    } else {
-      result_ = 1;
-      result_string_ = "B+R";
+    root_ = root_->MaybeAddChild(c);
+    if (game != nullptr) {
+      game->SetGameOverBecauseOfResign(root_->position.to_play());
     }
-    game_over_ = true;
-    return;
+    return true;
   }
 
-  PushHistory(c);
+  if (!root_->legal_moves[c]) {
+    MG_LOG(ERROR) << "Move " << c << " is illegal";
+    return false;
+  }
+
+  if (game != nullptr) {
+    UpdateGame(c, game);
+  }
 
   root_ = root_->MaybeAddChild(c);
-  // Don't need to keep the parent's children around anymore because we'll
-  // never revisit them.
-  root_->parent->PruneChildren(c);
+  if (options_.prune_orphaned_nodes) {
+    // Don't need to keep the parent's children around anymore because we'll
+    // never revisit them during normal play.
+    root_->parent->PruneChildren(c);
+  }
 
   if (options_.verbose) {
-    std::cerr << absl::StreamFormat("%s Q: %0.5f\n", name(), root_->Q());
-    std::cerr << "Played >>" << c << std::endl;
+    MG_LOG(INFO) << absl::StreamFormat("%s Q: %0.5f", name(), root_->Q());
+    MG_LOG(INFO) << "Played >>" << c;
   }
 
-  // Handle consecutive passing.
-  if (root_->position.is_game_over() ||
-      root_->position.n() >= kMaxSearchDepth) {
-    float score = root_->position.CalculateScore(options_.komi);
-    result_string_ = FormatScore(score);
-    result_ = score < 0 ? -1 : score > 0 ? 1 : 0;
-    game_over_ = true;
+  // Handle consecutive passing or termination by move limit.
+  if (game != nullptr) {
+    if (root_->game_over() || root_->at_move_limit()) {
+      game->SetGameOverBecauseOfPasses(
+          root_->position.CalculateScore(options_.game_options.komi));
+    }
   }
+
+  return true;
 }
 
-std::string MctsPlayer::FormatScore(float score) const {
-  return absl::StrFormat("%c+%.1f", score > 0 ? 'B' : 'W', std::abs(score));
-}
-
-void MctsPlayer::PushHistory(Coord c) {
-  history_.emplace_back();
-  History& history = history_.back();
-  history.c = c;
-  history.comment = root_->Describe();
-  history.node = root_;
-
+void MctsPlayer::UpdateGame(Coord c, Game* game) {
+  // Record which model(s) were used when running tree search for this move.
+  std::vector<std::string> models;
   if (!inferences_.empty()) {
-    // Record which model(s) were used when running tree search for this move.
-    std::vector<std::string> models;
     for (auto it = inferences_.rbegin(); it != inferences_.rend(); ++it) {
       if (it->last_move < root_->position.n()) {
         break;
@@ -299,57 +311,80 @@ void MctsPlayer::PushHistory(Coord c) {
       models.push_back(it->model);
     }
     std::reverse(models.begin(), models.end());
-    auto model_comment = absl::StrCat("models:", absl::StrJoin(models, ","));
-    history.comment = absl::StrCat(model_comment, "\n", history.comment);
-    if (options_.verbose) {
-      std::cerr << model_comment << std::endl;
-    }
+  }
+
+  // Build a comment for the move.
+  auto comment = root_->Describe();
+  if (!models.empty()) {
+    comment =
+        absl::StrCat("models:", absl::StrJoin(models, ","), "\n", comment);
   }
 
   // Convert child visit counts to a probability distribution, pi.
+  std::array<float, kNumMoves> search_pi;
   if (root_->position.n() < temperature_cutoff_) {
     // Squash counts before normalizing to match softpick behavior in PickMove.
     for (int i = 0; i < kNumMoves; ++i) {
-      history.search_pi[i] = std::pow(root_->child_N(i), kVisitCountSquash);
+      search_pi[i] = std::pow(root_->child_N(i), kVisitCountSquash);
     }
   } else {
     for (int i = 0; i < kNumMoves; ++i) {
-      history.search_pi[i] = root_->child_N(i);
+      search_pi[i] = root_->child_N(i);
     }
   }
   // Normalize counts.
   float sum = 0;
   for (int i = 0; i < kNumMoves; ++i) {
-    sum += history.search_pi[i];
+    sum += search_pi[i];
   }
   for (int i = 0; i < kNumMoves; ++i) {
-    history.search_pi[i] /= sum;
+    search_pi[i] /= sum;
   }
+
+  // Update the game history.
+  game->AddMove(root_->position.to_play(), c, root_->position.stones(),
+                std::move(comment), root_->Q(), search_pi, std::move(models));
 }
 
-void MctsPlayer::ProcessLeaves(absl::Span<MctsNode*> leaves) {
+void MctsPlayer::ProcessLeaves(absl::Span<TreePath> paths,
+                               bool random_symmetry) {
+  if (paths.empty()) {
+    return;
+  }
+
   // Select symmetry operations to apply.
   symmetries_used_.resize(0);
-  if (options_.random_symmetry) {
-    symmetries_used_.reserve(leaves.size());
-    for (size_t i = 0; i < leaves.size(); ++i) {
+  if (random_symmetry) {
+    symmetries_used_.reserve(paths.size());
+    for (size_t i = 0; i < paths.size(); ++i) {
       symmetries_used_.push_back(static_cast<symmetry::Symmetry>(
           rnd_.UniformInt(0, symmetry::kNumSymmetries - 1)));
     }
   } else {
-    symmetries_used_.resize(leaves.size(), symmetry::kIdentity);
+    symmetries_used_.resize(paths.size(), symmetry::kIdentity);
   }
 
   // Build input features for each leaf, applying random symmetries if
   // requested.
   DualNet::BoardFeatures raw_features;
-  features_.resize(leaves.size());
-  for (size_t i = 0; i < leaves.size(); ++i) {
-    leaves[i]->GetMoveHistory(DualNet::kMoveHistory, &recent_positions_);
-    DualNet::SetFeatures(recent_positions_, leaves[i]->position.to_play(),
+  features_.resize(paths.size());
+  for (size_t i = 0; i < paths.size(); ++i) {
+    const auto* leaf = paths[i].leaf;
+    MG_CHECK(leaf->num_virtual_losses_applied > 0)
+        << "Don't forget to add a virtual loss before calling ProcessLeaves";
+    leaf->GetMoveHistory(DualNet::kMoveHistory, &recent_positions_);
+    DualNet::SetFeatures(recent_positions_, leaf->position.to_play(),
                          &raw_features);
-    symmetry::ApplySymmetry<float, kN, DualNet::kNumStoneFeatures>(
-        symmetries_used_[i], raw_features.data(), features_[i].data());
+    if (network_->GetInputLayout() == DualNet::InputLayout::kNCHW) {
+      using OutIter =
+          symmetry::NchwOutputIterator<kN, DualNet::kNumStoneFeatures, float>;
+      symmetry::ApplySymmetry<kN, DualNet::kNumStoneFeatures>(
+          symmetries_used_[i], raw_features.data(),
+          OutIter(features_[i].data()));
+    } else {
+      symmetry::ApplySymmetry<kN, DualNet::kNumStoneFeatures>(
+          symmetries_used_[i], raw_features.data(), features_[i].data());
+    }
   }
 
   std::vector<const DualNet::BoardFeatures*> feature_ptrs;
@@ -358,7 +393,7 @@ void MctsPlayer::ProcessLeaves(absl::Span<MctsNode*> leaves) {
     feature_ptrs.push_back(&feature);
   }
 
-  outputs_.resize(leaves.size());
+  outputs_.resize(paths.size());
   std::vector<DualNet::Output*> output_ptrs;
   output_ptrs.reserve(outputs_.size());
   for (auto& output : outputs_) {
@@ -374,20 +409,22 @@ void MctsPlayer::ProcessLeaves(absl::Span<MctsNode*> leaves) {
       inferences_.emplace_back(model_, root_->position.n());
     }
     inferences_.back().last_move = root_->position.n();
-    inferences_.back().total_count += leaves.size();
+    inferences_.back().total_count += paths.size();
   }
 
   // Incorporate the inference outputs back into tree search, undoing any
   // previously applied random symmetries.
   std::array<float, kNumMoves> raw_policy;
-  for (size_t i = 0; i < leaves.size(); ++i) {
-    MctsNode* leaf = leaves[i];
+  for (size_t i = 0; i < paths.size(); ++i) {
+    auto* root = paths[i].root;
+    auto* leaf = paths[i].leaf;
     const auto& output = outputs_[i];
-    symmetry::ApplySymmetry<float, kN, 1>(
-        symmetry::Inverse(symmetries_used_[i]), output.policy.data(),
-        raw_policy.data());
+    symmetry::ApplySymmetry<kN, 1>(symmetry::Inverse(symmetries_used_[i]),
+                                   output.policy.data(), raw_policy.data());
     raw_policy[Coord::kPass] = output.policy[Coord::kPass];
-    leaf->IncorporateResults(raw_policy, output.value, root_);
+    leaf->IncorporateResults(options_.value_init_penalty, raw_policy,
+                             output.value, root);
+    leaf->RevertVirtualLoss(root);
   }
 }
 

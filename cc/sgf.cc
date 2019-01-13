@@ -15,14 +15,14 @@
 #include "cc/sgf.h"
 
 #include <cctype>
-#include <iostream>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "cc/check.h"
 #include "cc/constants.h"
+#include "cc/logging.h"
 
 namespace minigo {
 namespace sgf {
@@ -128,11 +128,11 @@ class Parser {
       }
       Read('[');
       read_value = true;
-      absl::string_view value;
+      std::string value;
       if (!ReadTo(']', &value)) {
         return false;
       }
-      prop->values.push_back(value);
+      prop->values.push_back(std::move(value));
       Read(']');
     }
   }
@@ -149,13 +149,27 @@ class Parser {
     return true;
   }
 
-  bool ReadTo(char c, absl::string_view* result) {
+  bool ReadTo(char c, std::string* result) {
+    result->clear();
+    bool read_escape = false;
     for (size_t i = 0; i < contents_.size(); ++i) {
-      if (contents_[i] == c) {
-        *result = contents_.substr(0, i);
-        contents_ = contents_.substr(i);
-        return result;
+      char x = contents_[i];
+      if (!read_escape) {
+        read_escape = x == '\\';
+        if (read_escape) {
+          continue;
+        }
       }
+
+      // Don't check the we're done reading if the current character is an
+      // escaped \].
+      if ((!read_escape || x != ']') && x == c) {
+        contents_ = contents_.substr(i);
+        return true;
+      }
+
+      absl::StrAppend(result, absl::string_view(&x, 1));
+      read_escape = false;
     }
     return Error("reached EOF before finding '", absl::string_view(&c, 1), "'");
   }
@@ -190,6 +204,53 @@ class Parser {
   absl::string_view contents_;
   std::string* error_;
 };
+
+bool GetTreeImpl(const Ast::Tree& tree,
+                 std::vector<std::unique_ptr<Node>>* dst) {
+  const auto* src = &tree;
+  const Ast::Property* prop;
+
+  // Extract all the nodes out of this tree.
+  for (const auto& node : src->nodes) {
+    // Parse move.
+    Move move;
+    if ((prop = node.FindProperty("B")) != nullptr) {
+      move.color = Color::kBlack;
+    } else if ((prop = node.FindProperty("W")) != nullptr) {
+      move.color = Color::kWhite;
+    } else {
+      continue;
+    }
+    if (prop->values.empty()) {
+      MG_LOG(WARNING) << "Skipping node " << node.ToString()
+                      << " because property " << prop->ToString()
+                      << " has no values";
+      continue;
+    }
+    move.c = Coord::FromSgf(prop->values[0], true);
+    if (move.c == Coord::kInvalid) {
+      MG_LOG(ERROR) << "Can't parse node " << node.ToString() << ": \""
+                    << prop->values[0] << "\" isn't a valid SGF coord";
+      return false;
+    }
+
+    // Parse comment.
+    std::string comment;
+    if ((prop = node.FindProperty("C")) != nullptr && !prop->values.empty()) {
+      comment = prop->values[0];
+    }
+
+    dst->push_back(absl::make_unique<Node>(move, std::move(comment)));
+    dst = &(dst->back()->children);
+  }
+
+  for (const auto& src_child : src->children) {
+    if (!GetTreeImpl(src_child, dst)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 }  // namespace
 
@@ -262,42 +323,33 @@ std::string CreateSgfString(absl::Span<const MoveWithComment> moves,
   return str;
 }
 
-std::vector<Move> GetMainLineMoves(const Ast::Tree& tree) {
-  std::vector<Move> moves;
-  const auto* t = &tree;
-  const Ast::Property* prop;
+std::vector<Move> Node::ExtractMainLine() const {
+  std::vector<Move> result;
+  const auto* node = this;
   for (;;) {
-    // Extract all the nodes out of this tree.
-    for (const auto& node : t->nodes) {
-      Move move;
-      if ((prop = node.FindProperty("B")) != nullptr) {
-        move.color = Color::kBlack;
-      } else if ((prop = node.FindProperty("W")) != nullptr) {
-        move.color = Color::kWhite;
-      } else {
-        continue;
-      }
-      // TODO(tommadams): Change this to a LOG(FATAL) once we get glog
-      // integrated.
-      if (prop->values.empty()) {
-        std::cerr << "Skipping node " << node.ToString() << " because property "
-                  << prop->ToString() << " has no values";
-        continue;
-      }
-      move.c = Coord::FromSgf(prop->values[0]);
-      moves.push_back(std::move(move));
-    }
-
-    // If the tree has no children, we're done.
-    if (t->children.empty()) {
+    result.push_back(node->move);
+    if (node->children.empty()) {
       break;
     }
+    node = node->children[0].get();
+  }
+  return result;
+}
 
-    // Otherwise, traverse into the first child tree (which is the main line).
-    t = &t->children[0];
+bool GetTrees(const Ast& ast, std::vector<std::unique_ptr<Node>>* trees) {
+  // Parse the AST into a temporary vector.
+  std::vector<std::unique_ptr<Node>> tmp;
+  for (const auto& tree : ast.trees()) {
+    if (!GetTreeImpl(tree, &tmp)) {
+      return false;
+    }
   }
 
-  return moves;
+  // If everything parsed ok, move the parsed trees into the output vector.
+  for (auto& tree : tmp) {
+    trees->push_back(std::move(tree));
+  }
+  return true;
 }
 
 std::ostream& operator<<(std::ostream& os, const MoveWithComment& move) {

@@ -22,6 +22,13 @@ type CmdHandler = (result: string, ok: boolean) => void;
 type DataHandler = (obj: any) => void;
 type ConnectCallback = () => void;
 
+function trimText(str: string, len: number) {
+  if (str.length > len) {
+    return `${str.substr(0, len - 3)}...`;
+  }
+  return str;
+}
+
 // The GtpSocket serializes all calls to send so that only one call is ever
 // outstanding at a time. This isn't strictly necessary, but it makes reading
 // the debug logs easier because we don't end up with request and result logs
@@ -37,10 +44,13 @@ class Socket {
   private dataHandlers: {prefix: string, handler: DataHandler}[] = [];
   private textHandlers: TextHandler[] = [];
 
+  private debug = false;
+
   // Connects to the Minigui server at the given URI.
   // Returns a promise that gets resolved of the board size when the connection
   // is established.
-  connect(uri: string) {
+  connect(uri: string, debug=false) {
+    this.debug = debug;
     this.sock = io.connect(uri)
 
     this.sock.on('json', (msg: string) => {
@@ -95,8 +105,8 @@ class Socket {
     this.dataHandlers.push({prefix: prefix + ':', handler: handler});
   }
 
-  // Sends a GTP command, invoking the optional handler when the command is
-  // complete.
+  // Sends a GTP command, returning a promise that is resolved when the
+  // command succeeds or is rejected if the command fails.
   send(cmd: string) {
     return new Promise((resolve, reject) => {
       this.cmdQueue.push({cmd: cmd, resolve: resolve, reject: reject});
@@ -104,6 +114,29 @@ class Socket {
         this.sendNext();
       }
     });
+  }
+
+  // Like send(cmd), but if the last call to sendOne is for the same GTP
+  // command (different arguments are allowed) and that command has not yet
+  // been sent, the pending command is rejected and replaced with this one.
+  sendOne(cmd: string) {
+    // Either the queue is empty (in which case we must just send) or there's
+    // a single command currently being executed (which we must let finish).
+    if (this.cmdQueue.length <= 1) {
+      return this.send(cmd);
+    }
+
+    // If the last command in the queue doesn't match this one: just send.
+    let lastCmd = this.cmdQueue[this.cmdQueue.length - 1].cmd;
+    if (cmd.split(' ', 1)[0] != lastCmd.split(' ', 1)[0]) {
+      return this.send(cmd);
+    }
+
+    // The last command in the queue matches this one: reject it and replace
+    // it with ours.
+    this.cmdQueue[this.cmdQueue.length - 1].reject('send one');
+    this.cmdQueue.length -= 1;
+    return this.send(cmd);
   }
 
   newSession() {
@@ -123,7 +156,11 @@ class Socket {
   private cmdHandler(line: string) {
     let {cmd, resolve, reject} = this.cmdQueue[0];
 
-    this.textHandler(`${cmd} ${line}`);
+    if (this.debug) {
+      console.log(`### OUT ${cmd} ${line}`);
+    }
+
+    this.textHandler(`${trimText(cmd, 1024)} ${trimText(line, 1024)}`);
 
     if (line[0] == '=' || line[0] == '?') {
       // This line contains the response from a GTP command; pop the command off
@@ -145,6 +182,11 @@ class Socket {
 
   private stderrHandler(line: string) {
     let handled = false;
+
+    if (this.debug) {
+      console.log(`### ERR ${line}`);
+    }
+
     for (let {prefix, handler} of this.dataHandlers) {
       if (line.substr(0, prefix.length) == prefix) {
         let stripped = line.substr(prefix.length);
@@ -172,7 +214,10 @@ class Socket {
   private sendNext() {
     let {cmd} = this.cmdQueue[0];
     if (this.textHandler) {
-      this.textHandler(`${cmd}`);
+      this.textHandler(trimText(cmd, 1024));
+    }
+    if (this.debug) {
+      console.log(`### SND ${cmd}`);
     }
     this.sock.emit('gtpcmd', {data: cmd});
   }

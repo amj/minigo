@@ -14,13 +14,12 @@
 
 #include "cc/dual_net/lite_dual_net.h"
 
-#include <sys/sysinfo.h>
-#include <iostream>
-
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "cc/check.h"
 #include "cc/constants.h"
+#include "cc/logging.h"
+#include "cc/platform/utils.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
@@ -35,24 +34,36 @@ namespace {
 
 class LiteDualNet : public DualNet {
  public:
-  explicit LiteDualNet(const std::string& graph_path);
+  explicit LiteDualNet(std::string graph_path);
 
   void RunMany(std::vector<const BoardFeatures*> features,
                std::vector<Output*> outputs, std::string* model) override;
 
+  void Reserve(size_t capacity) override;
+
  private:
+  template <typename T>
+  void RunMany(std::vector<const BoardFeatures*> features,
+               std::vector<Output*> outputs, T* feature_data,
+               const T* policy_data, const T* value_data);
+
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::Interpreter> interpreter_;
+
+  int input_idx_;
+  int policy_idx_;
+  int value_idx_;
 
   TfLiteTensor* input_ = nullptr;
   TfLiteTensor* policy_ = nullptr;
   TfLiteTensor* value_ = nullptr;
 
   std::string graph_path_;
+  size_t batch_capacity_;
 };
 
-LiteDualNet::LiteDualNet(const std::string& graph_path)
-    : graph_path_(graph_path) {
+minigo::LiteDualNet::LiteDualNet(std::string graph_path)
+    : graph_path_(graph_path), batch_capacity_(0) {
   model_ = FlatBufferModel::BuildFromFile(graph_path.c_str());
   MG_CHECK(model_ != nullptr);
 
@@ -61,100 +72,136 @@ LiteDualNet::LiteDualNet(const std::string& graph_path)
   MG_CHECK(interpreter_ != nullptr);
 
   // Let's just use all the processors we can.
-  interpreter_->SetNumThreads(get_nprocs());
+  interpreter_->SetNumThreads(GetNumLogicalCpus());
 
-  // Resize input tensor to batch size.
-  interpreter_->ResizeInputTensor(
-      0, {FLAGS_batch_size, kN, kN, kNumStoneFeatures});
-
-  MG_CHECK(interpreter_->AllocateTensors() == kTfLiteOk);
-
-  // Initialize input.
   const auto& inputs = interpreter_->inputs();
   MG_CHECK(inputs.size() == 1);
   absl::string_view input_name = interpreter_->GetInputName(0);
   MG_CHECK(input_name == "pos_tensor");
+  input_idx_ = inputs[0];
 
-  input_ = interpreter_->tensor(inputs[0]);
-  MG_CHECK(input_ != nullptr);
-  MG_CHECK(input_->type == kTfLiteUInt8);
-  MG_CHECK(input_->dims->size == 4);
-  MG_CHECK(input_->dims->data[0] == FLAGS_batch_size);
-  MG_CHECK(input_->dims->data[1] == kN);
-  MG_CHECK(input_->dims->data[2] == kN);
-  MG_CHECK(input_->dims->data[3] == kNumStoneFeatures);
+  // Check that the model matches the board size and feature count.
+  auto* input = interpreter_->tensor(input_idx_);
+  MG_CHECK(input->dims->size == 4);
+  MG_CHECK(input->dims->data[1] == kN);
+  MG_CHECK(input->dims->data[2] == kN);
+  MG_CHECK(input->dims->data[3] == kNumStoneFeatures);
 
-  // Initialize outputs.
   const auto& outputs = interpreter_->outputs();
   MG_CHECK(outputs.size() == 2);
   absl::string_view output_0_name = interpreter_->GetOutputName(0);
   absl::string_view output_1_name = interpreter_->GetOutputName(1);
   if (output_0_name == "policy_output") {
     MG_CHECK(output_1_name == "value_output") << output_1_name;
-    policy_ = interpreter_->tensor(outputs[0]);
-    value_ = interpreter_->tensor(outputs[1]);
+    policy_idx_ = outputs[0];
+    value_idx_ = outputs[1];
   } else {
     MG_CHECK(output_1_name == "policy_output") << output_1_name;
     MG_CHECK(output_0_name == "value_output") << output_0_name;
-    policy_ = interpreter_->tensor(outputs[1]);
-    value_ = interpreter_->tensor(outputs[0]);
+    policy_idx_ = outputs[1];
+    value_idx_ = outputs[0];
   }
-
-  MG_CHECK(policy_ != nullptr);
-  MG_CHECK(policy_->type == kTfLiteUInt8);
-  MG_CHECK(policy_->dims->size == 2);
-  MG_CHECK(policy_->dims->data[0] == FLAGS_batch_size);
-  MG_CHECK(policy_->dims->data[1] == kNumMoves);
-
-  MG_CHECK(value_ != nullptr);
-  MG_CHECK(value_->type == kTfLiteUInt8);
-  MG_CHECK(value_->dims->size == 1);
-  MG_CHECK(value_->dims->data[0] == FLAGS_batch_size);
 }
 
-// TODO(csigg): Support both float and uint8_t.
-void LiteDualNet::RunMany(std::vector<const BoardFeatures*> features,
-                          std::vector<Output*> outputs, std::string* model) {
-  int batch_size = static_cast<int>(features.size());
+void minigo::LiteDualNet::Reserve(size_t capacity) {
+  MG_CHECK(capacity > 0);
+  if (capacity <= batch_capacity_) {
+    return;
+  }
+
+  // Resize input tensor to batch size.
+  MG_CHECK(interpreter_->ResizeInputTensor(
+               input_idx_, {static_cast<int>(capacity), kN, kN,
+                            DualNet::kNumStoneFeatures}) == kTfLiteOk);
+  MG_CHECK(interpreter_->AllocateTensors() == kTfLiteOk);
+
+  // Get the new inputs and outputs after AllocateTensor().
+  input_ = interpreter_->tensor(input_idx_);
+  policy_ = interpreter_->tensor(policy_idx_);
+  value_ = interpreter_->tensor(value_idx_);
+
+  batch_capacity_ = capacity;
+}
+
+void minigo::LiteDualNet::RunMany(
+    std::vector<const DualNet::BoardFeatures*> features,
+    std::vector<DualNet::Output*> outputs, std::string* model) {
+  if (model != nullptr) {
+    *model = graph_path_;
+  }
+
+  Reserve(features.size());
+
+  switch (input_->type) {
+    case kTfLiteFloat32:
+      return RunMany(features, outputs, input_->data.f, policy_->data.f,
+                     value_->data.f);
+    case kTfLiteUInt8:
+      return RunMany(features, outputs, input_->data.uint8, policy_->data.uint8,
+                     value_->data.uint8);
+    default:
+      MG_LOG(FATAL) << "Unsupported input type";
+  }
+}
+
+template <typename T, typename S>
+T Convert(const TfLiteQuantizationParams&, const S& x) {
+  return static_cast<T>(x);
+}
+
+// Dequantize.
+template <>
+float Convert<float, uint8_t>(const TfLiteQuantizationParams& params,
+                              const uint8_t& x) {
+  return (x - params.zero_point) * params.scale;
+};
+
+// Quantize.
+template <>
+uint8_t Convert<uint8_t, float>(const TfLiteQuantizationParams& params,
+                                const float& x) {
+  return static_cast<uint8_t>(x / params.scale + params.zero_point);
+};
+
+template <typename T>
+void minigo::LiteDualNet::RunMany(std::vector<const BoardFeatures*> features,
+                                  std::vector<Output*> outputs, T* feature_data,
+                                  const T* policy_data, const T* value_data) {
+  int num_features = static_cast<int>(features.size());
 
   // Allow a smaller batch size than we run inference on because the first
   // inference made when starting the game has batch size 1 (instead of the
   // normal 8) to initialized the tree search.
-  MG_CHECK(batch_size <= input_->dims->data[0]);
+  MG_CHECK(num_features <= input_->dims->data[0]);
 
   // TODO(tommadams): Make BoardFeatures a uint8_t array and memcpy here.
-  auto* data = input_->data.uint8;
-  for (size_t j = 0; j < features.size(); ++j) {
+  const auto& input_params = input_->params;
+  for (int j = 0; j < num_features; ++j) {
     const auto& board = *features[j];
     for (size_t i = 0; i < board.size(); ++i) {
       // TODO(csigg): Apply dequantization parameters?
-      data[j * kNumStoneFeatures + i] = static_cast<uint8_t>(board[i]);
+      feature_data[j * kNumStoneFeatures + i] =
+          Convert<T>(input_params, board[i]);
     }
   }
 
   MG_CHECK(interpreter_->Invoke() == kTfLiteOk);
 
-  auto* policy_data = policy_->data.uint8;
-  auto* value_data = value_->data.uint8;
   const auto& policy_params = policy_->params;
   const auto& value_params = value_->params;
-  for (int j = 0; j < batch_size; ++j) {
+  for (int j = 0; j < num_features; ++j) {
     for (int i = 0; i < kNumMoves; ++i) {
       outputs[j]->policy[i] =
-          policy_params.scale *
-          (policy_data[j * batch_size + i] - policy_params.zero_point);
+          Convert<float>(policy_params, policy_data[j * num_features + i]);
     }
-    outputs[j]->value =
-        value_params.scale * (value_data[j] - value_params.zero_point);
-  }
-
-  if (model != nullptr) {
-    *model = graph_path_;
+    outputs[j]->value = Convert<float>(value_params, value_data[j]);
   }
 }
 }  // namespace
 
-std::unique_ptr<DualNet> NewLiteDualNet(const std::string& model_path) {
-  return absl::make_unique<LiteDualNet>(model_path);
+std::unique_ptr<DualNet> LiteDualNetFactory::NewDualNet(
+    const std::string& model) {
+  return absl::make_unique<LiteDualNet>(model);
 }
+
 }  // namespace minigo

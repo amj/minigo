@@ -1,8 +1,8 @@
 Minigo: A minimalist Go engine modeled after AlphaGo Zero, built on MuGo
 ==================================================
 
-This is a pure Python implementation of a neural-network based Go AI, using
-TensorFlow. While inspired by DeepMind's AlphaGo algorithm, this project is not
+This is an implementation of a neural-network based Go AI, using TensorFlow.
+While inspired by DeepMind's AlphaGo algorithm, this project is not
 a DeepMind project nor is it affiliated with the official AlphaGo project.
 
 ### This is NOT an official version of AlphaGo ###
@@ -87,11 +87,11 @@ pip3 install -r requirements.txt
 
 Then, you'll need to choose to install the GPU or CPU tensorflow requirements:
 
-- GPU: `pip3 install "tensorflow-gpu>=1.9,<1.10"`.
+- GPU: `pip3 install "tensorflow-gpu>=1.11,<1.12"`.
   - *Note*: You must install [CUDA
     9.0](https://developer.nvidia.com/cuda-90-download-archive). for Tensorflow
     1.5+.
-- CPU: `pip3 install "tensorflow>=1.9,<1.10"`.
+- CPU: `pip3 install "tensorflow>=1.11,<1.12"`.
 
 Setting up the Environment
 --------------------------
@@ -114,6 +114,13 @@ Running unit tests
 ------------------
 ```
 ./test.sh
+```
+
+To run individual modules
+
+```
+BOARD_SIZE=9 python3 tests/run_tests.py test_go
+BOARD_SIZE=19 python3 tests/run_tests.py test_mcts
 ```
 
 Automated Tests

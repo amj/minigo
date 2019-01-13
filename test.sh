@@ -18,14 +18,14 @@
 # users, but largely for automation.
 #
 # NOTE! If this file changes/moves, please change
-# https://github.com/kubernetes/test-infra/blob/master/jobs/config.json
+# https://github.com/kubernetes/test-infra/blob/master/config/jobs/tensorflow/minigo/minigo.yaml
 
 # Ensure we're running from this directory to ensure PYTHONPATH is set
 # correctly.
 cd "$(dirname "$0")"
 
 lint_fail=0
-pylint *.py || {
+python3 -m pylint *.py || {
   lint_fail=1
   echo >&2 "--------------------------------------"
   echo >&2 "Py linting did not pass successfully!"

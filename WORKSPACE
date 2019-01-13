@@ -1,4 +1,10 @@
 http_archive(
+    name = "com_google_protobuf",
+    strip_prefix = "protobuf-3.6.0",
+    url = "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
+)
+
+http_archive(
     name = "com_github_gflags_gflags",
     strip_prefix = "gflags-e292e0452fcfd5a8ae055b59052fc041cbab4abf",
     urls = ["https://github.com/gflags/gflags/archive/e292e0452fcfd5a8ae055b59052fc041cbab4abf.zip"],
@@ -14,6 +20,12 @@ http_archive(
     name = "com_github_googlecloudplatform_google_cloud_cpp",
     strip_prefix = "google-cloud-cpp-0.2.0",
     url = "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.2.0.zip",
+)
+
+http_archive(
+    name = "com_google_protobuf",
+    strip_prefix = "protobuf-3.6.0",
+    url = "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
 )
 
 new_http_archive(
@@ -36,23 +48,19 @@ http_archive(
     urls = ["https://github.com/google/googletest/archive/master.zip"],
 )
 
-http_archive(
-    name = "org_pubref_rules_protobuf",
-    strip_prefix = "rules_protobuf-0.8.2",
-    urls = ["https://github.com/pubref/rules_protobuf/archive/v0.8.2.zip"],
-)
-
 load("@com_github_googlecloudplatform_google_cloud_cpp//bazel:google_cloud_cpp_deps.bzl", "google_cloud_cpp_deps")
+
 google_cloud_cpp_deps()
 
 # Have to manually call the corresponding function for gRPC:
 #   https://github.com/bazelbuild/bazel/issues/1550
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
+
 grpc_deps()
 
-load("@org_pubref_rules_protobuf//cpp:rules.bzl", "cpp_proto_repositories")
-load("@org_pubref_rules_protobuf//python:rules.bzl", "py_proto_repositories")
+load("//cc:cuda_configure.bzl", "cuda_configure")
+load("//cc:tensorrt_configure.bzl", "tensorrt_configure")
 
-cpp_proto_repositories()
+cuda_configure(name = "local_config_cuda")
 
-py_proto_repositories()
+tensorrt_configure(name = "local_config_tensorrt")

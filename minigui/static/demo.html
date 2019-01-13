@@ -6,7 +6,7 @@
     <title>Minigo: demo</title>
     <link href="style.css" rel="stylesheet">
     <script type="text/javascript" src="socketio/socket.io.min.js"></script>
-    <script data-main="demo_app" src="require/require.js"></script>
+    <script data-main="demo" src="require/require.js"></script>
     <style>
       .minigui {
         display: flex;
@@ -28,18 +28,23 @@
         height: 40px;
       }
 
+      #black-player { background-color: #222; color: #eee; }
+      #white-player { background-color: #fff; color: #222; }
+      #pass { background-color: #9c9389; color: #222; }
+      #reset { background-color: #8c6845; color: #ffe; }
+
       .winrate-graph { width: 480px; height: 210px; }
       .log-container { width: 480px; height: 590px; }
       .log { height: 566px; font-size: 10px; }
       .console-wrapper { height: 24px; }
       .console-prompt { font-size: 10px; width: 16px; }
-      .console { font-size: 10px; width: 464px; }
+      #console { font-size: 10px; width: 464px; padding: 3px 0 3px 0; }
+      #console:focus { outline: none; }
     </style>
   </head>
   <body>
     <div class="minigui"
-         data-gtp-report_search_interval="50"
-         data-gtp-ponder_limit="0">
+         data-gtp-report_search_interval="50">
       <div class="main-board-pad board"><div id="main-board"></div></div>
       <div class="sp-30"></div>
       <div class="fs-0">
