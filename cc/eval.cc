@@ -108,10 +108,7 @@ class Evaluator {
  public:
   void Run() {
     auto start_time = absl::Now();
-    auto model_factory = NewDualNetFactory();
-    if (FLAGS_parallel_games > 1) {
-      model_factory = NewBatchingDualNetFactory(std::move(model_factory));
-    }
+    BatchingDualNetFactory batcher(NewDualNetFactory());
 
     Model model_a(FLAGS_model);
     Model model_b(FLAGS_model_two);
@@ -126,7 +123,7 @@ class Evaluator {
     for (int thread_id = 0; thread_id < num_games; ++thread_id) {
       bool swap_models = (thread_id & 1) != 0;
       threads_.emplace_back(std::bind(&Evaluator::ThreadRun, this, thread_id,
-                                      model_factory.get(),
+                                      &batcher,
                                       swap_models ? &model_a : &model_b,
                                       swap_models ? &model_b : &model_a));
     }
@@ -161,7 +158,7 @@ class Evaluator {
   }
 
  private:
-  void ThreadRun(int thread_id, DualNetFactory* model_factory,
+  void ThreadRun(int thread_id, BatchingDualNetFactory* batcher,
                  Model* black_model, Model* white_model) {
     // The player and other_player reference this pointer.
     std::unique_ptr<DualNet> dual_net;
@@ -183,34 +180,36 @@ class Evaluator {
     }
 
     const bool verbose = thread_id == 0;
-    player_options.verbose = verbose;
+    player_options.verbose = false;
     player_options.name = black_model->name;
     auto black = absl::make_unique<MctsPlayer>(
-        model_factory->NewDualNet(black_model->path), player_options);
+        batcher->NewDualNet(black_model->path), player_options);
 
     player_options.verbose = false;
     player_options.name = white_model->name;
     auto white = absl::make_unique<MctsPlayer>(
-        model_factory->NewDualNet(white_model->path), player_options);
+        batcher->NewDualNet(white_model->path), player_options);
 
     Game game(black->name(), white->name(), player_options.game_options);
     auto* curr_player = black.get();
     auto* next_player = white.get();
-    model_factory->StartGame(curr_player->network(), next_player->network());
+    batcher->StartGame(curr_player->network(), next_player->network());
     while (!curr_player->root()->game_over() &&
            !curr_player->root()->at_move_limit()) {
       auto move = curr_player->SuggestMove();
-      if (curr_player->options().verbose) {
+      if (verbose) {
         std::cerr << curr_player->root()->Describe() << "\n";
       }
       curr_player->PlayMove(move, &game);
       next_player->PlayMove(move, nullptr);
-      if (curr_player->options().verbose) {
+      if (verbose) {
+        MG_LOG(INFO) << absl::StreamFormat("%s Q: %0.5f", curr_player->name(),
+                                           curr_player->root()->Q());
         MG_LOG(INFO) << curr_player->root()->position.ToPrettyString();
       }
       std::swap(curr_player, next_player);
     }
-    model_factory->EndGame(curr_player->network(), next_player->network());
+    batcher->EndGame(curr_player->network(), next_player->network());
 
     if (game.result() > 0) {
       ++black_model->black_wins;

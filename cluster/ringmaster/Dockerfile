@@ -1,7 +1,10 @@
-FROM gcr.io/tensor-go/cc-base:latest
+FROM nvidia/opencl:devel-ubuntu18.04
 
 # Install build depedencies
 RUN apt update && apt-get install -y \
+        build-essential \
+        curl \
+  git \
   clinfo \
   cmake \
   libboost-dev \
