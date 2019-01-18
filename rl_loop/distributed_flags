@@ -7,7 +7,7 @@
 # Network architecture flags
 --conv_width=256
 --fc_width=256
---trunk_layers=19
+--trunk_layers=39
 
 # Training-related flags
 --train_batch_size=256
@@ -22,17 +22,19 @@
 --window_size=500000
 --cbt_project=tensor-go
 --cbt_instance=minigo-instance
---cbt_table=v15-games
+--cbt_table=v16-games
 
 # Selfplay related flags.
-# These flags can be overwritten by --flags_path (see cc/main.cc for details)
+# These flags can be overwritten by --flags_path (see cc/selfplay.cc for details)
 --inject_noise=true
 --soft_pick=true
 --random_symmetry=true
 --virtual_losses=8
---parallel_games=32
+--parallel_games=16
 --num_readouts=800
 --disable_resign_pct=0.00
 --resign_threshold=-0.999
+--policy_softmax_temp=0.96
 --value_init_penalty=2.0
---output_bigtable=tensor-go,minigo-instance,v15-games
+--output_bigtable=tensor-go,minigo-instance,v16-games
+--run_forever=true

@@ -93,6 +93,7 @@ def train():
 def freeze(save_path, rewrite_tpu=False):
     cmd = ['python3', 'freeze_graph.py',
            '--work_dir={}'.format(fsdb.working_dir()),
+           '--flagfile=rl_loop/distributed_flags',
            '--model_path={}'.format(save_path)]
 
     if rewrite_tpu:

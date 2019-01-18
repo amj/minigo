@@ -4,7 +4,7 @@
 # Network architecture flags
 --conv_width=256
 --fc_width=256
---trunk_layers=19
+--trunk_layers=39
 
 # Selfplay related flags.
 # These flags can be overwritten by --flags_path (see cc/main.cc for details)
@@ -16,5 +16,7 @@
 --num_readouts=800
 --disable_resign_pct=1.00
 --resign_threshold=-0.99999
+--policy_softmax_temp=0.96
 --value_init_penalty=2.0
---output_bigtable=tensor-go,minigo-instance,v15-games-nr
+--output_bigtable=tensor-go,minigo-instance,v16-games-nr
+--run_forever=true
