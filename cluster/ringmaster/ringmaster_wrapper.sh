@@ -4,6 +4,7 @@ set -e
 
 #TODO pull in ringmaster & networks here.
 #gsutil cp $RINGMASTER_CONTROL docker_ring.ctl
+gsutil auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
 
 echo "Running Ringmaster:"
 cat docker_ring.ctl
