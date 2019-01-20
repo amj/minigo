@@ -13,5 +13,5 @@ cat docker_ring.ctl
 echo "Ringmaster all done"
 POD_NAME=`hostname | rev | cut -d'-' -f 1 | rev`
 
-gsutil -m cp -r docker_ring.* gs://$BUCKET_NAME/$POD_NAME/
+gsutil -m cp -r docker_ring.* gs://$OUTPUT_NAME/$POD_NAME/
 

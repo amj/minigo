@@ -1,6 +1,6 @@
 FROM nvidia/opencl:runtime-ubuntu16.04
 RUN apt-get update --no-upgrade -yq && \
-    apt-get install --no-upgrade -yq curl git clinfo cmake g++ libboost-dev libboost-program-options-dev libboost-filesystem-dev opencl-headers ocl-icd-libopencl1 ocl-icd-opencl-dev zlib1g-dev qtbase5-dev python-virtualenv
+    apt-get install --no-upgrade -yq curl git clinfo cmake g++ libboost-dev libboost-program-options-dev libboost-filesystem-dev opencl-headers ocl-icd-libopencl1 ocl-icd-opencl-dev zlib1g-dev qtbase5-dev python-virtualenv lsb-release
 
 RUN mkdir /app && cd /app && \
     git clone https://github.com/gcp/leela-zero.git . && \
@@ -30,7 +30,7 @@ ADD ringmaster_wrapper.sh .
 ADD 000939-heron_converted.txt .
 ADD docker_ring.ctl .
 
-#gcp plz! flagfile loc!
+#gcp plz! this should be a flagfile.
 
 ADD p100-lz-tuning /root/.local/share/leela-zero/leelaz_opencl_tuning
 

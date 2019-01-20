@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ringmaster-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ringmaster-runner
+  template:
+    metadata:
+      labels:
+        app: ringmaster-runner
+    spec:
+      containers:
+      - name: ringmaster-runner
+        image: gcr.io/tensor-go/minigo-ringmaster:latest
+        imagePullPolicy: Always
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+          requests:
+            nvidia.com/gpu: 1
+        volumeMounts:
+        - name: service-credentials
+          mountPath: /etc/credentials
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /etc/credentials/service-account.json
+        - name: OUTPUT_NAME
+          value: $OUTPUT_NAME
+        - name: LD_LIBRARY_PATH
+          value: /usr/local/nvidia/lib64
+      volumes:
+      - name: service-credentials
+        secret:
+          secretName: $SERVICE_ACCOUNT-creds
