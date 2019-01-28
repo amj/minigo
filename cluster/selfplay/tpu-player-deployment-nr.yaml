@@ -16,11 +16,11 @@ spec:
     spec:
       containers:
       - name: minigo-tpu-player-container
-        image: gcr.io/tensor-go/minigo-tpu-player:v15_nr
+        image: gcr.io/tensor-go/minigo-tpu-player:v16_nr
         imagePullPolicy: Always
         resources:
           limits:
-            cloud-tpus.google.com/v2: 8
+            cloud-tpus.google.com/v3: 8
         volumeMounts:
         - name: service-credentials
           mountPath: /etc/credentials

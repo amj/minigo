@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: tpu-player-deployment
 spec:
-  replicas: 128
+  replicas: 64
   selector:
     matchLabels:
       app: tpu-player
@@ -20,7 +20,7 @@ spec:
         imagePullPolicy: Always
         resources:
           limits:
-            cloud-tpus.google.com/v2: 8
+            cloud-tpus.google.com/v3: 8
         volumeMounts:
         - name: service-credentials
           mountPath: /etc/credentials
