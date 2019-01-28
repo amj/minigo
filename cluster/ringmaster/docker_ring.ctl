@@ -10,12 +10,12 @@ players = {
   "mg_939-heron": Player(
         "./leelaz -g --noponder -w 000939-heron_converted.txt -t 1 "
         "--lagbuffer 0 --timemanage off -r 20",
-        startup_gtp_commands=["time_settings 0 {} 1".format(1)],
+        startup_gtp_commands=["time_settings 0 {} 1".format(10)],
         ),
   "leela-201": Player(
         "./leelaz -g --noponder -w best-network -t 1 -r 20 "
         "--lagbuffer 10 --timemanage off",
-        startup_gtp_commands=["time_settings 0 {} 1".format(1)],
+        startup_gtp_commands=["time_settings 0 {} 1".format(10)],
         )
 }
 
