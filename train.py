@@ -194,6 +194,8 @@ def train(*tf_records: "Records to train on"):
             bigtable_input.set_fresh_watermark(games, index_from,
                                                FLAGS.window_size)
     except:
+        # If we died training, no need to wait for more games; reset the
+        # freshness bit and re-raise
         if FLAGS.use_bt:
             games.require_fresh_games(0)
         raise

@@ -41,4 +41,4 @@ echo "----------------------------"
 echo "Bucket:       $BUCKET_NAME"
 echo "Service acct: $SERVICE_ACCOUNT"
 echo "----------------------------"
-cat ${SCRIPT_DIR}/tpu-player-deployment.yaml | envsubst | kubectl apply -f -
+cat ${SCRIPT_DIR}/tpu-player-deployment-nr.yaml | envsubst | kubectl apply -f -

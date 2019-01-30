@@ -70,7 +70,7 @@ def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     return job_conf, resp_bw, resp_wb
 
 
-def same_run_eval(black_num=0, white_num=0):
+def same_run_eval(black_num=0, white_num=0, completions=5):
     """Shorthand to spawn a job matching up two models from the same run,
     identified by their model number """
     if black_num <= 0 or white_num <= 0:
@@ -86,7 +86,8 @@ def same_run_eval(black_num=0, white_num=0):
     return launch_eval_job(b_model_path + ".pb",
                            w_model_path + ".pb",
                            "{:d}-{:d}".format(black_num, white_num),
-                           flags.FLAGS.bucket_name)
+                           flags.FLAGS.bucket_name,
+                           completions=completions)
 
 
 def _append_pairs(new_pairs, dry_run):

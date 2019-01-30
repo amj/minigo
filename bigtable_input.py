@@ -562,7 +562,7 @@ class GameQueue:
 
 
 def set_fresh_watermark(game_queue, count_from, window_size,
-                        fresh_fraction=0.05, minimum_fresh=20000):
+                        fresh_fraction=0.025, minimum_fresh=20000):
     """Sets the metadata cell used to block until some quantity of games have been played.
 
     This sets the 'freshness mark' on the `game_queue`, used to block training
