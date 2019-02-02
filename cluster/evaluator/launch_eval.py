@@ -19,6 +19,7 @@ import fire
 import random
 from absl import flags
 import kubernetes
+from kubernetes.client.rest import ApiException
 import yaml
 import json
 import os
@@ -32,7 +33,7 @@ MAX_TASKS = 250  # Keep < 500, or k8s may not track completions accurately.
 MIN_TASKS = 20
 
 
-def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=4):
+def launch_eval_job(m1_path, m2_path, job_name, bucket_name, completions=5):
     """Launches an evaluator job.
     m1_path, m2_path: full gs:// paths to the .pb files to match up
     job_name: string, appended to the container, used to differentiate the job
@@ -188,6 +189,14 @@ def zoo_loop(sgf_dir=None, max_jobs=40):
                 print("Enqueuing:", next_pair)
                 try:
                     same_run_eval(*next_pair)
+                except ApiException as err:
+                    if err.status == 409: # Conflict.  Flip the order and throw it on the pile.
+                        print("Conflict enqueing {}.  Continuing...".format(next_pair))
+                        next_pair = [next_pair[1], next_pair[0]]
+                        desired_pairs.append(next_pair)
+                        random.shuffle(desired_pairs)
+                    else:
+                        desired_pairs.append(next_pair)
                 except:
                     desired_pairs.append(next_pair)
                     raise
