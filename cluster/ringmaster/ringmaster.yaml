@@ -1,20 +1,18 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: ringmaster-runner
+  name: ringmaster-runner-$JOB_NAME
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: ringmaster-runner
+  backoffLimit: 100
+  parallelism: 10
+  completions: 10
   template:
     metadata:
-      labels:
-        app: ringmaster-runner
+      name: ringmaster-runner-$JOB_NAME
     spec:
       containers:
       - name: ringmaster-runner
-        image: gcr.io/tensor-go/minigo-ringmaster:latest
+        image: gcr.io/tensor-go/mg-ring:latest
         imagePullPolicy: Always
         resources:
           limits:
@@ -27,11 +25,18 @@ spec:
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: /etc/credentials/service-account.json
-        - name: OUTPUT_NAME
-          value: $OUTPUT_NAME
+        - name: RINGMASTER_CONTROL_PATH
+          value: $RINGMASTER_CONTROL_PATH
+        - name: OUT_PATH
+          value: $OUT_PATH
+        - name: MODEL_ONE
+          value: $MODEL_ONE
+        - name: MODEL_TWO
+          value: $MODEL_TWO
         - name: LD_LIBRARY_PATH
           value: /usr/local/nvidia/lib64
       volumes:
       - name: service-credentials
         secret:
           secretName: $SERVICE_ACCOUNT-creds
+      restartPolicy: OnFailure
