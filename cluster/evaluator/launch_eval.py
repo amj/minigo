@@ -252,7 +252,8 @@ def cleanup(api_instance=None):
     """ Remove completed jobs from the cluster """
     api = api_instance or get_api()
     r = api.list_job_for_all_namespaces()
-    delete_opts = kubernetes.client.V1DeleteOptions()
+    delete_opts = kubernetes.client.V1DeleteOptions(
+            propagation_policy="Background")
     for job in r.items:
         if job.status.succeeded == job.spec.completions:
             print(job.metadata.name, "finished!")
