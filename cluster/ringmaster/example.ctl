@@ -9,8 +9,9 @@ stderr_to_log = True
 
 def LeelaPlayer(model, playouts):
     return Player(
-        "./leelaz -g --noponder -w {} -t 1 -v {}".format(
-            model, playouts))
+        "./leelaz -g --noponder -w {} -t 1 -p {} --timemanage off ".format(
+            model, playouts),
+        startup_gtp_commands=["time_settings 0 1 0"])
 
 matchups = []
 players = {}

@@ -1,6 +1,4 @@
-"""TODO(jacksona): DO NOT SUBMIT without one-line documentation for setup_ringmaster.
-
-TODO(jacksona): DO NOT SUBMIT without a detailed description of setup_ringmaster.
+""" Helps populate the kubernetes conf for our ringmaster job
 """
 import sys
 sys.path.insert(0, '.')
