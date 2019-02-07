@@ -18,8 +18,8 @@ RING_BASENAME=`basename $RINGMASTER_CONTROL_PATH`
 # if your control file doesn't end in .ctl, things are bad.
 RING_FILES=`basename $RINGMASTER_CONTROL_PATH .ctl`
 
-echo "Running Ringmaster:"
-cat $RING_BASENAME
+date
+echo "Running Ringmaster: $RING_BASENAME"
 
 #/mg_venv/bin/ringmaster $RING_BASENAME check
 /mg_venv/bin/ringmaster $RING_BASENAME run

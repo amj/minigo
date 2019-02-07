@@ -49,7 +49,7 @@ def get_mg_path(model_run, model_num):
     model_run = integer, e.g. 15, 16, corresponding to the v-number
     model_num = integer, e.g 939, for the model number in that run
     """
-    fsdb.switch_base("tensor-go-minigo-v{:d}-19".format(model_run))
+    fsdb.switch_base("minigo-pub/v{:d}-19x19".format(model_run))
     model = fsdb.get_model(model_num)
     return os.path.join(fsdb.models_dir(), model)
 
@@ -83,7 +83,7 @@ def launch_ring_job(job_name, ctl_path, m1_path, m2_path, out_path, completions)
 
 
 if __name__ == '__main__':
-    remaining_argv = flags.FLAGS(sys.argv, known_only=True)
+    remaining_argv = FLAGS(sys.argv, known_only=True)
     fire.Fire({
         'launch_ring_job': launch_ring_job,
     }, remaining_argv[1:])
