@@ -151,11 +151,11 @@ def train_many(start_at=1000000, num_datasets=3):
 
         datasets = preprocessing.get_many_tpu_bt_input_tensors(
             games, games_nr, params['batch_size'],
-            start_at=start_at num_datasets=num_datasets)
+            start_at=start_at, num_datasets=num_datasets)
 
         d = datasets[0]
         for d_next in datasets[1:]:
-            d.concatenate(d_next)
+            d = d.concatenate(d_next)
         return d
     hooks = []
 
