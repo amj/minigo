@@ -159,7 +159,7 @@ def train_many(start_at=1000000, num_datasets=3):
         return d
     hooks = []
 
-    steps = num_datasets * (2**21)
+    steps = num_datasets * FLAGS.steps_to_train
     logging.info("Training, steps = %s, batch = %s -> %s examples",
                  steps or '?', effective_batch_size,
                  (steps * effective_batch_size) if steps else '?')
