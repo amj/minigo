@@ -275,7 +275,7 @@ def get_many_tpu_bt_input_tensors(games, games_nr, batch_size,
                                        start_at + (i * window_increment) + window_size,
                                        moves=moves,
                                        shuffle=True,
-                                       column_family=TFEXAMPLE,
+                                       column_family=bigtable_input.TFEXAMPLE,
                                        column='example')
         ds = dataset.repeat(1)
         if datasets:
