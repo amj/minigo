@@ -132,6 +132,41 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
             self.before_weights = None
 
 
+def train_many(start_at=1000000, num_datasets=3):
+    """ Trains on a set of bt_datasets, skipping eval for now.
+    (from preprocessing.get_many_tpu_bt_input_tensors)
+    """
+    if not FLAGS.use_tpu and FLAGS.use_bt:
+        raise ValueError("Only tpu & bt mode supported")
+
+    tf.logging.set_verbosity(tf.logging.INFO)
+    estimator = dual_net.get_estimator()
+    effective_batch_size = FLAGS.train_batch_size * FLAGS.num_tpu_cores
+
+    def _input_fn(params):
+        games = bigtable_input.GameQueue(
+            FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table)
+        games_nr = bigtable_input.GameQueue(
+            FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table + '-nr')
+
+        datasets = preprocessing.get_many_tpu_bt_input_tensors(
+            games, games_nr, params['batch_size'],
+            start_at=start_at num_datasets=num_datasets)
+
+        d = datasets[0]
+        for d_next in datasets[1:]:
+            d.concatenate(d_next)
+        return d
+    hooks = []
+
+    steps = num_datasets * (2**21)
+    logging.info("Training, steps = %s, batch = %s -> %s examples",
+                 steps or '?', effective_batch_size,
+                 (steps * effective_batch_size) if steps else '?')
+
+    estimator.train(_input_fn, steps=steps, hooks=hooks)
+
+
 def train(*tf_records: "Records to train on"):
     """Train on examples."""
     tf.logging.set_verbosity(tf.logging.INFO)

@@ -261,6 +261,40 @@ def get_tpu_bt_input_tensors(games, games_nr, batch_size, num_repeats=1,
     return dataset
 
 
+def get_many_tpu_bt_many_input_tensors(games, games_nr, batch_size,
+                                       start_at, num_datasets,
+                                       moves=2**21
+                                       window_size=500e3
+                                       window_increment=25000):
+    datasets = []
+    for i in range(num_datasets):
+        # TODO(amj) mixin calibration games with some math. (from start_at that
+        # is proportionally along compared to last_game_number?  comparing
+        # timestamps?)
+        dataset = games.moves_from_games(start_at + (i * window_increment),
+                                       start_at + (i * window_increment) + window_size,
+                                       moves=moves,
+                                       shuffle=True,
+                                       column_family=TFEXAMPLE,
+                                       column='example')
+        dataset = dataset.repeat(1)
+        dataset = dataset.batch(batch_size)
+        dataset = dataset.filter(lambda t: tf.equal(tf.shape(t)[0], batch_size))
+        dataset = dataset.map(
+            functools.partial(batch_parse_tf_example, batch_size))
+        if random_rotation:
+            # Unbatch the dataset so we can rotate it
+            dataset = dataset.apply(tf.contrib.data.unbatch())
+            dataset = dataset.apply(tf.contrib.data.map_and_batch(
+                _random_rotation_pure_tf,
+                batch_size,
+                drop_remainder=True))
+
+        dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
+        datasets.append(dataset)
+    return datasets
+
+
 def make_dataset_from_selfplay(data_extracts):
     '''
     Returns an iterable of tf.Examples.
