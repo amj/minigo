@@ -261,7 +261,7 @@ def get_tpu_bt_input_tensors(games, games_nr, batch_size, num_repeats=1,
     return dataset
 
 
-def get_many_tpu_bt_many_input_tensors(games, games_nr, batch_size,
+def get_many_tpu_bt_input_tensors(games, games_nr, batch_size,
                                        start_at, num_datasets,
                                        moves=2**21,
                                        window_size=500e3,
