@@ -278,12 +278,9 @@ def get_many_tpu_bt_input_tensors(games, games_nr, batch_size,
                                        column_family=bigtable_input.TFEXAMPLE,
                                        column='example')
         ds = ds.repeat(1)
-        if dataset:
-            dataset = dataset.concatenate(ds)
-        else:
-            dataset = ds
+        ds = ds.batch(batch_size)
+        dataset = dataset.concatenate(ds) if dataset else ds
 
-    dataset = dataset.batch(batch_size)
     dataset = dataset.filter(lambda t: tf.equal(tf.shape(t)[0], batch_size))
     dataset = dataset.map(
         functools.partial(batch_parse_tf_example, batch_size))
