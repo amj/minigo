@@ -262,25 +262,25 @@ def get_tpu_bt_input_tensors(games, games_nr, batch_size, num_repeats=1,
 
 
 def get_many_tpu_bt_input_tensors(games, games_nr, batch_size,
-                                       start_at, num_datasets,
-                                       moves=2**21,
-                                       window_size=500e3,
-                                       window_increment=25000):
+                                  start_at, num_datasets,
+                                  moves=2**21,
+                                  window_size=500e3,
+                                  window_increment=25000):
     dataset = None
     for i in range(num_datasets):
         # TODO(amj) mixin calibration games with some math. (from start_at that
         # is proportionally along compared to last_game_number?  comparing
         # timestamps?)
         ds = games.moves_from_games(start_at + (i * window_increment),
-                                       start_at + (i * window_increment) + window_size,
-                                       moves=moves,
-                                       shuffle=True,
-                                       column_family=bigtable_input.TFEXAMPLE,
-                                       column='example')
-        ds = ds.repeat(1)
-        ds = ds.map(lambda row_name, s: s)
+                                    start_at + (i * window_increment) + window_size,
+                                    moves=moves,
+                                    shuffle=True,
+                                    column_family=bigtable_input.TFEXAMPLE,
+                                    column='example')
         dataset = dataset.concatenate(ds) if dataset else ds
 
+    dataset = dataset.repeat(1)
+    dataset = dataset.map(lambda row_name, s: s)
     dataset = dataset.batch(batch_size,drop_remainder=False)
     dataset = dataset.map(
         functools.partial(batch_parse_tf_example, batch_size))
