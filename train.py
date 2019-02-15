@@ -149,16 +149,11 @@ def train_many(start_at=1000000, num_datasets=3):
         games_nr = bigtable_input.GameQueue(
             FLAGS.cbt_project, FLAGS.cbt_instance, FLAGS.cbt_table + '-nr')
 
-        datasets = preprocessing.get_many_tpu_bt_input_tensors(
+        return preprocessing.get_many_tpu_bt_input_tensors(
             games, games_nr, params['batch_size'],
             start_at=start_at, num_datasets=num_datasets)
 
-        d = datasets[0]
-        for d_next in datasets[1:]:
-            d = d.concatenate(d_next)
-        return d
     hooks = []
-
     steps = num_datasets * FLAGS.steps_to_train
     logging.info("Training, steps = %s, batch = %s -> %s examples",
                  steps or '?', effective_batch_size,
