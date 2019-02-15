@@ -278,19 +278,18 @@ def get_many_tpu_bt_input_tensors(games, games_nr, batch_size,
                                        column_family=bigtable_input.TFEXAMPLE,
                                        column='example')
         ds = ds.repeat(1)
-        ds = ds.batch(batch_size)
+        ds = ds.map(lambda row_name, s: s)
         dataset = dataset.concatenate(ds) if dataset else ds
 
-    dataset = dataset.filter(lambda t: tf.equal(tf.shape(t)[0], batch_size))
+    dataset = dataset.batch(batch_size,drop_remainder=False)
     dataset = dataset.map(
         functools.partial(batch_parse_tf_example, batch_size))
-    if random_rotation:
-        # Unbatch the dataset so we can rotate it
-        dataset = dataset.apply(tf.contrib.data.unbatch())
-        dataset = dataset.apply(tf.contrib.data.map_and_batch(
-            _random_rotation_pure_tf,
-            batch_size,
-            drop_remainder=True))
+    # Unbatch the dataset so we can rotate it
+    dataset = dataset.apply(tf.contrib.data.unbatch())
+    dataset = dataset.apply(tf.contrib.data.map_and_batch(
+        _random_rotation_pure_tf,
+        batch_size,
+        drop_remainder=True))
 
     dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
     return dataset
