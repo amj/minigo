@@ -168,9 +168,6 @@ def get_cross_eval_pairs():
     existing_pairs, previous_pairs = restore_pairs()
     max_uncertainty = float(max([r[1] for r in rs.values()]))
 
-    import pdb
-    pdb.set_trace()
-
     # priority is roughly related to expected gain of information
     pairs = []
     for run_a, model_a in all_models:
