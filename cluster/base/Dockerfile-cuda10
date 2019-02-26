@@ -112,8 +112,8 @@ RUN mkdir /bazel && \
     /bazel/installer.sh && \
     rm -f /bazel/installer.sh
 
-#COPY bashrc /etc/bash.bashrc
-#RUN chmod a+rwx /etc/bash.bashrc
+###################################
+## Configure Tensorflow starts here.
 
 #ADD staging/requirements.txt /app/requirements.txt
 # RUN ${PIP} install -r /app/requirements.txt
@@ -123,6 +123,8 @@ ENV CC_OPT_FLAGS -march=ivybridge
 
 ENV SCRIPT_DIR app/cc
 ENV DST_DIR "${SCRIPT_DIR}/tensorflow"
+
+# Putting the TMP dir in /app keeps it from being 'cleaned up' by the container runtime
 ENV TMP_DIR "/app/tf_build"
 ENV TMP_PKG_DIR "/app/tensorflow_pkg"
 
@@ -187,6 +189,9 @@ RUN export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)" && \
     curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - && \
     apt-get update -y && apt-get install google-cloud-sdk -y
 
+# Everything is ok?  Let's clean up our build dir to keep the image size down.
+RUN rm -rfd ${TMP_DIR}
+RUN rm -rfd ${TMP_PKG_DIR}
 
 WORKDIR /app
 
