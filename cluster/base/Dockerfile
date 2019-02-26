@@ -56,8 +56,7 @@ run mv /usr/bin/python /usr/bin/python.bak
 run ln -s /usr/bin/python3 /usr/bin/python
 ENV CUDA_HOME /usr/local/cuda
 RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
-ENV LD_LIBRARY_PATH ${CUDA_HOME}/lib64:${CUDA_HOME}/lib64/stubs/:$LD_LIBRARY_PATH
-ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH ${CUDA_HOME}/lib64:${CUDA_HOME}/lib64/stubs/:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 WORKDIR /app
 
