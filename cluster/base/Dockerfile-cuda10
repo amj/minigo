@@ -1,0 +1,201 @@
+ARG UBUNTU_VERSION=18.04
+
+ARG ARCH=
+ARG CUDA=10.0
+FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
+# ARCH and CUDA are specified again because the FROM directive resets ARGs
+# (but their default value is retained if set previously)
+ARG ARCH
+ARG CUDA
+ARG CUDNN=7.4.1.5-1
+ARG CUDNN_MAJOR_VERSION=7
+ARG LIB_DIR_PREFIX=x86_64
+
+# Needed for string substitution
+SHELL ["/bin/bash", "-c"]
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cuda-command-line-tools-${CUDA/./-} \
+        cuda-cublas-dev-${CUDA/./-} \
+        cuda-cudart-dev-${CUDA/./-} \
+        cuda-cufft-dev-${CUDA/./-} \
+        cuda-curand-dev-${CUDA/./-} \
+        cuda-cusolver-dev-${CUDA/./-} \
+        cuda-cusparse-dev-${CUDA/./-} \
+        libcudnn7=${CUDNN}+cuda${CUDA} \
+        libcudnn7-dev=${CUDNN}+cuda${CUDA} \
+        libcurl3-dev \
+        libfreetype6-dev \
+        libhdf5-serial-dev \
+        libzmq3-dev \
+        pkg-config \
+        rsync \
+        software-properties-common \
+        unzip \
+        zip \
+        zlib1g-dev \
+        wget \
+        git \
+        && \
+    find /usr/local/cuda-${CUDA}/lib64/ -type f -name 'lib*_static.a' -not -name 'libcudart_static.a' -delete && \
+    rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v7.a
+
+RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1804-5.0.2-ga-cuda${CUDA} \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda${CUDA} \
+        && apt-get clean \
+        && rm -rf /var/lib/apt/lists/*; }
+
+# Configure the build for our CUDA configuration.
+ENV CI_BUILD_PYTHON python
+ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda:/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib:$LD_LIBRARY_PATH
+ENV TF_NEED_CUDA 1
+ENV TF_NEED_TENSORRT 0
+ENV TF_CUDA_COMPUTE_CAPABILITIES=3.5,5.2,6.0,6.1,7.0
+ENV TF_CUDA_VERSION=${CUDA}
+ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
+# CACHE_STOP is used to rerun future commands, otherwise cloning tensorflow will be cached and will not pull the most recent version
+ARG CACHE_STOP=1
+# Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
+ARG CHECKOUT_TF_SRC=0
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+
+ARG USE_PYTHON_3_NOT_2
+ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
+ARG PYTHON=python${_PY_SUFFIX}
+ARG PIP=pip${_PY_SUFFIX}
+
+# See http://bugs.python.org/issue19846
+ENV LANG C.UTF-8
+
+RUN apt-get update && apt-get install -y \
+    ${PYTHON} \
+    ${PYTHON}-pip
+
+RUN ${PIP} --no-cache-dir install --upgrade \
+    pip \
+    setuptools
+
+# Some TF tools expect a "python" binary
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    wget \
+    openjdk-8-jdk \
+    ${PYTHON}-dev \
+    swig
+
+RUN ${PIP} --no-cache-dir install \
+    Pillow \
+    h5py \
+    keras_applications \
+    keras_preprocessing \
+    matplotlib \
+    mock \
+    numpy \
+    scipy \
+    sklearn \
+    pandas \
+    && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
+    enum34
+
+# Install bazel
+ARG BAZEL_VERSION=0.19.2
+RUN mkdir /bazel && \
+    wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
+    wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \
+    chmod +x /bazel/installer.sh && \
+    /bazel/installer.sh && \
+    rm -f /bazel/installer.sh
+
+#COPY bashrc /etc/bash.bashrc
+#RUN chmod a+rwx /etc/bash.bashrc
+
+#ADD staging/requirements.txt /app/requirements.txt
+# RUN ${PIP} install -r /app/requirements.txt
+COPY staging/cc/configure_tensorflow.sh cc/configure_tensorflow.sh
+ENV CC_OPT_FLAGS -march=ivybridge
+# RUN cc/configure_tensorflow.sh
+
+ENV SCRIPT_DIR app/cc
+ENV DST_DIR "${SCRIPT_DIR}/tensorflow"
+ENV TMP_DIR "/app/tf_build"
+ENV TMP_PKG_DIR "/app/tensorflow_pkg"
+
+RUN mkdir -p ${TMP_DIR}
+
+RUN mkdir -p ${DST_DIR}
+
+# TODO(tommadams): we should probably switch to Clang at some point.
+ENV commit_tag "v1.13.0-rc2"
+
+RUN git clone https://github.com/tensorflow/tensorflow "${TMP_DIR}"
+WORKDIR $TMP_DIR
+
+RUN echo "Checking out ${commit_tag}"
+RUN git checkout "${commit_tag}"
+
+# Run the TensorFlow configuration script, setting reasonable values for most
+# of the options.
+RUN echo "Configuring tensorflow"
+
+ENV PYTHON_BIN_PATH ${PYTHON}
+
+RUN LD_LIBRARY_PATH="/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib:$LD_LIBRARY_PATH" \
+TF_CUDA_COMPUTE_CAPABILITIES="3.5,5.2,6.0,6.1,7.0" \
+TF_NEED_JEMALLOC=${TF_NEED_JEMALLOC:-1} \
+TF_NEED_GCP=${TF_NEED_GCP:-1} \
+TF_NEED_HDFS=${TF_NEED_HDFS:-0} \
+TF_NEED_S3=${TF_NEED_S3:-0} \
+TF_NEED_KAFKA=${TF_NEED_KAFKA:-0} \
+TF_NEED_CUDA=${TF_NEED_CUDA:-1} \
+TF_NEED_GDR=${TF_NEED_GDR:-0} \
+TF_NEED_VERBS=${TF_NEED_VERBS:-0} \
+TF_NEED_OPENCL_SYCL=${TF_NEED_OPENCL_SYCL:-0} \
+TF_CUDA_CLANG=${TF_CUDA_CLANG:-0} \
+TF_NEED_TENSORRT=${TF_NEED_TENSORRT:-0} \
+TF_NEED_MPI=${TF_NEED_MPI:-0} \
+TF_SET_ANDROID_WORKSPACE=${TF_SET_ANDROID_WORKSPACE:-0} \
+TF_NCCL_VERSION=${TF_NCCL_VERSION:-1.3} \
+${TMP_DIR}/configure
+
+RUN echo "Building tensorflow package"
+RUN bazel build -c opt --config=opt --copt="${CC_OPT_FLAGS}" --action_env="LD_LIBRARY_PATH=${LD_LIBRARY_PATH}" //tensorflow/tools/pip_package:build_pip_package
+RUN bazel-bin/tensorflow/tools/pip_package/build_pip_package ${TMP_PKG_DIR}
+
+RUN echo "Tensorflow built-ish"
+RUN echo "Unpacking tensorflow package..."
+RUN unzip -q ${TMP_PKG_DIR}/tensorflow-*.whl -d ${TMP_DIR}
+
+RUN echo "Copying tensor flow headers to ${DST_DIR}"
+RUN cp -r ${TMP_DIR}/tensorflow-*.data/purelib/tensorflow/include/* "${DST_DIR}"
+
+RUN bazel build -c opt --config=opt --copt="${CC_OPT_FLAGS}" \
+    //tensorflow:libtensorflow_cc.so \
+    //tensorflow:libtensorflow_framework.so
+
+RUN cp bazel-bin/tensorflow/libtensorflow_*.so "${DST_DIR}"
+
+ENV NVIDIA_REQUIRE_CUDA "cuda >=10.0,driver>=410"
+
+RUN export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)" && \
+    echo "deb http://packages.cloud.google.com/apt $CLOUD_SDK_REPO main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
+    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - && \
+    apt-get update -y && apt-get install google-cloud-sdk -y
+
+
+WORKDIR /app
+
+
+
+
+
+
+
+
+
+

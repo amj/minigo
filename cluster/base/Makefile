@@ -10,7 +10,7 @@ base-image:
 		cp ../../*.bazelrc staging/
 		cp ../../cc/configure_tensorflow.sh staging/cc/
 		cp ../../requirements.txt staging/
-		docker build --quiet -t "gcr.io/${PROJECT}/cc-base:${VERSION_TAG}" .
+		nvidia-docker build -f Dockerfile-cuda10 -t "gcr.io/${PROJECT}/cc-base:${VERSION_TAG}" .
 		rm -rfd staging/
 
 base-push: base-image
