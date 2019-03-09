@@ -4,3 +4,15 @@
 
 --shuffle_buffer_size=10000
 --filter_amount=0.1
+
+--train_batch_size=1024
+--lr_rates=0.01
+--lr_rates=0.001
+--lr_rates=0.0001
+--lr_boundaries=25000
+--lr_boundaries=75000
+
+# smaller network, higher l2_cost
+--l2_strength=0.001
+--sgd_momentum=0.9
+--steps_to_train=128

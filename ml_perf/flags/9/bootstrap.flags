@@ -10,3 +10,5 @@
 
 # Don't look for signal in what is known to be noise.
 --num_readouts=50
+--num_games=2048
+--parallel_games=2048

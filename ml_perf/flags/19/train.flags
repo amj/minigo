@@ -4,3 +4,15 @@
 
 --filter_amount=0.1
 --shuffle_buffer_size=10000
+
+--train_batch_size=256
+--lr_rates=0.02
+--lr_rates=0.002
+--lr_rates=0.0005
+--lr_boundaries=100000
+--lr_boundaries=300000
+--l2_strength=0.0001
+--sgd_momentum=0.9
+--steps_to_train=1024
+
+
