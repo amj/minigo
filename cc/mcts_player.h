@@ -28,6 +28,7 @@
 #include "cc/algorithm.h"
 #include "cc/constants.h"
 #include "cc/dual_net/dual_net.h"
+#include "cc/dual_net/inference_cache.h"
 #include "cc/game.h"
 #include "cc/mcts_node.h"
 #include "cc/position.h"
@@ -43,9 +44,6 @@ float TimeRecommendation(int move_num, float seconds_per_move, float time_limit,
 class MctsPlayer {
  public:
   struct Options {
-    // Game-level options.
-    Game::Options game_options;
-
     // If inject_noise is true, the amount of noise to mix into the root.
     float noise_mix = 0.25;
     bool inject_noise = true;
@@ -61,8 +59,6 @@ class MctsPlayer {
     float policy_softmax_temp = 0.98;
 
     int virtual_losses = 8;
-
-    std::string name = "minigo";
 
     // Seed used from random permutations.
     // If the default value of 0 is used, a time-based seed is chosen.
@@ -107,7 +103,9 @@ class MctsPlayer {
   // If position is non-null, the player will be initilized with that board
   // state. Otherwise, the player is initialized with an empty board with black
   // to play.
-  MctsPlayer(std::unique_ptr<DualNet> network, const Options& options);
+  MctsPlayer(std::unique_ptr<DualNet> network,
+             std::unique_ptr<InferenceCache> inference_cache, Game* game,
+             const Options& options);
 
   virtual ~MctsPlayer();
 
@@ -120,7 +118,7 @@ class MctsPlayer {
   // Plays the move at point c.
   // If game is non-null, adds a new move to the game's move history and sets
   // the game over state if appropriate.
-  virtual bool PlayMove(Coord c, Game* game);
+  virtual bool PlayMove(Coord c);
 
   bool ShouldResign() const;
 
@@ -133,7 +131,7 @@ class MctsPlayer {
   const MctsNode* root() const { return root_; }
 
   const Options& options() const { return options_; }
-  const std::string& name() const { return options_.name; }
+  const std::string& name() const { return network_->name(); }
   DualNet* network() { return network_.get(); }
 
  protected:
@@ -155,7 +153,7 @@ class MctsPlayer {
 
   // Moves the root_ node up to its parent, popping the last move off the game
   // history but preserving the game tree.
-  bool UndoMove(Game* game);
+  bool UndoMove();
 
   void TreeSearch();
 
@@ -165,6 +163,9 @@ class MctsPlayer {
   // Returns the root of the game tree.
   MctsNode* game_root() { return &game_root_; }
   const MctsNode* game_root() const { return &game_root_; }
+
+  Game* game() { return game_; }
+  const Game* game() const { return game_; }
 
   Random* rnd() { return &rnd_; }
 
@@ -194,7 +195,7 @@ class MctsPlayer {
     int last_move = 0;
   };
 
-  void UpdateGame(Coord c, Game* game);
+  void UpdateGame(Coord c);
 
   std::unique_ptr<DualNet> network_;
   int temperature_cutoff_;
@@ -207,12 +208,21 @@ class MctsPlayer {
   BoardVisitor bv_;
   GroupVisitor gv_;
 
+  Game* game_;
+
   Random rnd_;
 
   Options options_;
 
-  std::string model_;
+  // The name of the model used for inferences. In the case of ReloadingDualNet,
+  // this is different from the model's name: the model name is the pattern used
+  // to match each generation of model, while the inference model name is the
+  // path to the actual serialized model file.
+  std::string inference_model_;
+
   std::vector<InferenceInfo> inferences_;
+
+  std::unique_ptr<InferenceCache> inference_cache_;
 
   // Vectors reused when running TreeSearch.
   std::vector<TreePath> tree_search_paths_;

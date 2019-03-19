@@ -24,6 +24,7 @@
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "cc/constants.h"
+#include "cc/file/path.h"
 #include "cc/logging.h"
 #include "cc/thread_safe_queue.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -32,10 +33,10 @@
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/stream_executor/platform.h"
 
 #if MINIGO_ENABLE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/stream_executor/platform.h"
 #endif
 
 using tensorflow::DT_FLOAT;
@@ -151,7 +152,9 @@ class TfDualNet : public DualNet {
 };
 
 TfDualNet::TfDualNet(std::string graph_path, int device_count)
-    : graph_path_(graph_path), running_(true) {
+    : DualNet(std::string(file::Stem(graph_path))),
+      graph_path_(graph_path),
+      running_(true) {
   GraphDef graph_def;
 
   auto* env = Env::Default();

@@ -6,7 +6,12 @@ define(["require", "exports", "./util", "./graph"], function (require, exports, 
             return false;
         }
         for (let i = 0; i < a.length; ++i) {
-            if (Math.abs(a[i] - b[i]) > threshold) {
+            let ai = a[i];
+            let bi = b[i];
+            if ((ai == null) != (bi == null)) {
+                return false;
+            }
+            if (ai != null && bi != null && Math.abs(ai - bi) > threshold) {
                 return false;
             }
         }
@@ -32,15 +37,18 @@ define(["require", "exports", "./util", "./graph"], function (require, exports, 
                 parent = util_1.getElement(parent);
             }
         }
-        newGame(rootPosition) {
-            this.rootPosition = rootPosition;
-            this.activePosition = rootPosition;
+        newGame() {
+            this.rootPosition = null;
+            this.activePosition = null;
             this.mainLine = [];
             this.variation = [];
             this.xEnd = 10;
             this.draw();
         }
         setActive(position) {
+            if (this.rootPosition == null && position.parent == null) {
+                this.rootPosition = position;
+            }
             if (position != this.activePosition) {
                 this.xEnd = Math.max(this.xEnd, position.moveNum);
                 this.activePosition = position;
@@ -109,25 +117,27 @@ define(["require", "exports", "./util", "./graph"], function (require, exports, 
             ctx.fillStyle = '#ffe';
             let q = 0;
             let values = this.activePosition.isMainLine ? this.mainLine : this.variation;
-            if (values.length > 0) {
-                q = values[Math.min(moveNum, values.length - 1)];
+            for (let i = Math.min(moveNum, values.length - 1); i >= 0; --i) {
+                if (values[i] != null) {
+                    q = values[i];
+                    break;
+                }
             }
-            let score = 50 + 50 * q;
-            let txt;
-            if (score > 50) {
-                txt = `B:${Math.round(score)}%`;
+            if (q != null) {
+                let score = 50 + 50 * q;
+                let txt;
+                if (score > 50) {
+                    txt = `B:${Math.round(score)}%`;
+                }
+                else {
+                    txt = `W:${Math.round(100 - score)}%`;
+                }
+                this.drawText(txt, this.xEnd + 4 / this.xScale, q);
             }
-            else {
-                txt = `W:${Math.round(100 - score)}%`;
-            }
-            this.drawText(txt, this.xEnd + 4 / this.xScale, q);
         }
         getWinRate(variation) {
             let result = [];
             for (let p of variation) {
-                if (p.q == null) {
-                    break;
-                }
                 result.push(p.q);
             }
             return result;
@@ -138,8 +148,9 @@ define(["require", "exports", "./util", "./graph"], function (require, exports, 
             }
             let points = [];
             for (let i = 0; i < values.length; ++i) {
-                if (values[i] != null) {
-                    points[i] = [i, values[i]];
+                let v = values[i];
+                if (v != null) {
+                    points.push([i, v]);
                 }
             }
             super.drawPlot(points, {

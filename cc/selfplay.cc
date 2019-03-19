@@ -67,7 +67,8 @@ DEFINE_bool(inject_noise, true,
             "If true, inject noise into the root position at the start of "
             "each tree search.");
 DEFINE_double(noise_mix, 0.25,
-              "If inject_noise is true, the amount of noise to mix into the root.");
+              "If inject_noise is true, the amount of noise to mix into the "
+              "root.");
 DEFINE_bool(soft_pick, true,
             "If true, choose moves early in the game with a probability "
             "proportional to the number of times visited during tree search. "
@@ -105,7 +106,8 @@ DEFINE_double(decay_factor, 0.98,
               "If time_limit is non-zero, the decay factor used to shorten the "
               "amount of time spent thinking as the game progresses.");
 DEFINE_bool(run_forever, false,
-            "When running 'selfplay' mode, whether to run forever.");
+            "When running 'selfplay' mode, whether to run forever. "
+            "Only one of run_forever and num_games must be set.");
 
 // Inference flags.
 DEFINE_string(model, "",
@@ -114,6 +116,9 @@ DEFINE_string(model, "",
               "proto. For engine=lite, the model should be .tflite "
               "flatbuffer.");
 DEFINE_int32(parallel_games, 32, "Number of games to play in parallel.");
+DEFINE_int32(num_games, 0,
+             "Total number of games to play. Defaults to parallel_games. "
+             "Only one of num_games and run_forever must be set.");
 
 // Output flags.
 DEFINE_string(output_dir, "",
@@ -137,20 +142,21 @@ std::string GetOutputDir(absl::Time now, const std::string& root_dir) {
   return file::JoinPath(root_dir, sub_dirs);
 }
 
-void ParseMctsPlayerOptionsFromFlags(MctsPlayer::Options* options) {
-  options->noise_mix = FLAGS_noise_mix;
-  options->inject_noise = FLAGS_inject_noise;
-  options->soft_pick = FLAGS_soft_pick;
-  options->random_symmetry = FLAGS_random_symmetry;
-  options->value_init_penalty = FLAGS_value_init_penalty;
-  options->policy_softmax_temp = FLAGS_policy_softmax_temp;
-  options->game_options.resign_threshold = -std::abs(FLAGS_resign_threshold);
-  options->virtual_losses = FLAGS_virtual_losses;
-  options->random_seed = FLAGS_seed;
-  options->num_readouts = FLAGS_num_readouts;
-  options->seconds_per_move = FLAGS_seconds_per_move;
-  options->time_limit = FLAGS_time_limit;
-  options->decay_factor = FLAGS_decay_factor;
+void ParseOptionsFromFlags(Game::Options* game_options,
+                           MctsPlayer::Options* player_options) {
+  game_options->resign_threshold = -std::abs(FLAGS_resign_threshold);
+  player_options->noise_mix = FLAGS_noise_mix;
+  player_options->inject_noise = FLAGS_inject_noise;
+  player_options->soft_pick = FLAGS_soft_pick;
+  player_options->random_symmetry = FLAGS_random_symmetry;
+  player_options->value_init_penalty = FLAGS_value_init_penalty;
+  player_options->policy_softmax_temp = FLAGS_policy_softmax_temp;
+  player_options->virtual_losses = FLAGS_virtual_losses;
+  player_options->random_seed = FLAGS_seed;
+  player_options->num_readouts = FLAGS_num_readouts;
+  player_options->seconds_per_move = FLAGS_seconds_per_move;
+  player_options->time_limit = FLAGS_time_limit;
+  player_options->decay_factor = FLAGS_decay_factor;
 }
 
 void LogEndGameInfo(const Game& game, absl::Duration game_time) {
@@ -194,15 +200,39 @@ void LogEndGameInfo(const Game& game, absl::Duration game_time) {
 
 class SelfPlayer {
  public:
+  explicit SelfPlayer(ModelDescriptor desc)
+      : engine_(std::move(desc.engine)), model_(std::move(desc.model)) {}
+
   void Run() {
     auto start_time = absl::Now();
+
+    // Figure out how many games we should play.
+    MG_CHECK(FLAGS_parallel_games >= 1);
+
+    int num_games = 0;
+    if (run_forever_) {
+      MG_CHECK(FLAGS_num_games == 0)
+          << "num_games must not be set if run_forever is true";
+    } else {
+      if (FLAGS_num_games == 0) {
+        num_games = FLAGS_parallel_games;
+      } else {
+        MG_CHECK(FLAGS_num_games >= FLAGS_parallel_games)
+            << "if num_games is set, it must be >= parallel_games";
+        num_games = FLAGS_num_games;
+      }
+    }
+
+    num_remaining_games_ = num_games;
+    run_forever_ = FLAGS_run_forever;
+
     {
       absl::MutexLock lock(&mutex_);
-      auto model_factory = NewDualNetFactory();
+      auto model_factory = NewDualNetFactory(engine_);
       // If the model path contains a pattern, wrap the implementation factory
       // in a ReloadingDualNetFactory to automatically reload the latest model
       // that matches the pattern.
-      if (FLAGS_model.find("%d") != std::string::npos) {
+      if (model_.find("%d") != std::string::npos) {
         model_factory = absl::make_unique<ReloadingDualNetFactory>(
             std::move(model_factory), absl::Seconds(3));
       }
@@ -220,8 +250,15 @@ class SelfPlayer {
     for (auto& t : threads_) {
       t.join();
     }
-    MG_LOG(INFO) << "Played " << FLAGS_parallel_games << " games, total time "
+
+    MG_LOG(INFO) << "Played " << num_games << " games, total time "
                  << absl::ToDoubleSeconds(absl::Now() - start_time) << " sec.";
+
+    {
+      absl::MutexLock lock(&mutex_);
+      auto model_name = batcher_->NewDualNet(model_)->name();
+      MG_LOG(INFO) << FormatWinStatsTable({{model_name, win_stats_}});
+    }
   }
 
  private:
@@ -231,25 +268,23 @@ class SelfPlayer {
   // race conditions.
   struct ThreadOptions {
     void Init(int thread_id, Random* rnd) {
-      ParseMctsPlayerOptionsFromFlags(&player_options);
+      ParseOptionsFromFlags(&game_options, &player_options);
       player_options.verbose = thread_id == 0;
       // If an random seed was explicitly specified, make sure we use a
       // different seed for each thread.
       if (player_options.random_seed != 0) {
         player_options.random_seed += 1299283 * thread_id;
       }
-      player_options.game_options.resign_enabled =
-          (*rnd)() >= FLAGS_disable_resign_pct;
+      game_options.resign_enabled = (*rnd)() >= FLAGS_disable_resign_pct;
 
-      run_forever = FLAGS_run_forever;
       holdout_pct = FLAGS_holdout_pct;
       output_dir = FLAGS_output_dir;
       holdout_dir = FLAGS_holdout_dir;
       sgf_dir = FLAGS_sgf_dir;
     }
 
+    Game::Options game_options;
     MctsPlayer::Options player_options;
-    bool run_forever;
     float holdout_pct;
     std::string output_dir;
     std::string holdout_dir;
@@ -271,31 +306,40 @@ class SelfPlayer {
       return;
     }
 
-    do {
-      std::unique_ptr<MctsPlayer> player;
+    for (;;) {
       std::unique_ptr<Game> game;
+      std::unique_ptr<MctsPlayer> player;
 
       {
         absl::MutexLock lock(&mutex_);
+
+        // Check if we've finished playing.
+        if (!run_forever_) {
+          if (num_remaining_games_ == 0) {
+            break;
+          }
+          num_remaining_games_ -= 1;
+        }
+
         auto old_model = FLAGS_model;
         MaybeReloadFlags();
         MG_CHECK(old_model == FLAGS_model)
             << "Manually changing the model during selfplay is not supported.";
         thread_options.Init(thread_id, &rnd_);
-        player = absl::make_unique<MctsPlayer>(
-            batcher_->NewDualNet(FLAGS_model), thread_options.player_options);
-        game =
-            absl::make_unique<Game>(player->name(), player->name(),
-                                    thread_options.player_options.game_options);
+        game = absl::make_unique<Game>(model_, model_,
+                                       thread_options.game_options);
+        player = absl::make_unique<MctsPlayer>(batcher_->NewDualNet(model_),
+                                               nullptr, game.get(),
+                                               thread_options.player_options);
       }
 
       // Play the game.
       auto start_time = absl::Now();
       {
         absl::MutexLock lock(&mutex_);
-        batcher_->StartGame(player->network(), player->network());
+        BatchingDualNetFactory::StartGame(player->network(), player->network());
       }
-      while (!player->root()->game_over() && !player->root()->at_move_limit()) {
+      while (!game->game_over() && !player->root()->at_move_limit()) {
         auto move = player->SuggestMove();
         if (player->options().verbose) {
           const auto& position = player->root()->position;
@@ -306,11 +350,11 @@ class SelfPlayer {
                        << " O: " << position.num_captures()[1];
           MG_LOG(INFO) << player->root()->Describe();
         }
-        MG_CHECK(player->PlayMove(move, game.get()));
+        MG_CHECK(player->PlayMove(move));
       }
       {
         absl::MutexLock lock(&mutex_);
-        batcher_->EndGame(player->network(), player->network());
+        BatchingDualNetFactory::EndGame(player->network(), player->network());
       }
 
       {
@@ -318,6 +362,7 @@ class SelfPlayer {
         // outputs from multiple threads being interleaved.
         absl::MutexLock lock(&mutex_);
         LogEndGameInfo(*game, absl::Now() - start_time);
+        win_stats_.Update(*game);
       }
 
       // Write the outputs.
@@ -353,7 +398,7 @@ class SelfPlayer {
             GetOutputDir(now, file::JoinPath(thread_options.sgf_dir, "full")),
             output_name, *game, true);
       }
-    } while (thread_options.run_forever);
+    }
 
     MG_LOG(INFO) << "Thread " << thread_id << " stopping";
   }
@@ -403,7 +448,20 @@ class SelfPlayer {
   std::unique_ptr<BatchingDualNetFactory> batcher_ GUARDED_BY(&mutex_);
   Random rnd_ GUARDED_BY(&mutex_);
   std::vector<std::thread> threads_;
+
+  // True if we should run selfplay indefinitely.
+  bool run_forever_ GUARDED_BY(&mutex_) = false;
+
+  // If run_forever_ is false, how many games are left to play.
+  int num_remaining_games_ GUARDED_BY(&mutex_) = 0;
+
+  // Stats about how every game was won.
+  WinStats win_stats_ GUARDED_BY(&mutex_);
+
   uint64_t flags_timestamp_ = 0;
+
+  const std::string engine_;
+  const std::string model_;
 };
 
 }  // namespace
@@ -412,7 +470,7 @@ class SelfPlayer {
 int main(int argc, char* argv[]) {
   minigo::Init(&argc, &argv);
   minigo::zobrist::Init(FLAGS_seed * 614944751);
-  minigo::SelfPlayer player;
+  minigo::SelfPlayer player(minigo::ParseModelDescriptor(FLAGS_model));
   player.Run();
   return 0;
 }

@@ -23,6 +23,8 @@ import functools
 import logging
 import os.path
 import time
+import numpy as np
+import random
 
 import tensorflow as tf
 from tensorflow.contrib import summary
@@ -60,6 +62,9 @@ flags.DEFINE_multi_integer('lr_boundaries', [400000, 600000],
 
 flags.DEFINE_multi_float('lr_rates', [0.01, 0.001, 0.0001],
                          'The different learning rates')
+
+flags.DEFINE_integer('training_seed', 0,
+                     'Random seed to use for training and validation')
 
 flags.register_multi_flags_validator(
     ['lr_boundaries', 'lr_rates'],
@@ -206,7 +211,9 @@ def get_inference_input():
 
 
 def model_fn(features, labels, mode, params):
-    '''
+    """
+    Create the model for estimator api
+
     Args:
         features: tensor with shape
             [BATCH_SIZE, go.N, go.N, features_lib.NEW_FEATURES_PLANES]
@@ -225,7 +232,7 @@ def model_fn(features, labels, mode, params):
         eval_metric_ops
     return dict of tensors
         logits: [BATCH_SIZE, go.N * go.N + 1]
-    '''
+    """
 
     policy_output, value_output, logits = model_inference_fn(
         features, mode == tf.estimator.ModeKeys.TRAIN, params)
@@ -258,7 +265,8 @@ def model_fn(features, labels, mode, params):
         else:
             tf.contrib.quantize.create_eval_graph()
 
-    optimizer = tf.train.MomentumOptimizer(learning_rate, params['sgd_momentum'])
+    optimizer = tf.train.MomentumOptimizer(
+        learning_rate, params['sgd_momentum'])
     if params['use_tpu']:
         optimizer = tpu_optimizer.CrossShardOptimizer(optimizer)
     with tf.control_dependencies(update_ops):
@@ -451,7 +459,8 @@ def model_inference_fn(features, training, params):
         shared_output, filters=params['policy_conv_width'], kernel_size=1)
     policy_conv = tf.nn.relu(my_batchn(policy_conv, center=False, scale=False))
     logits = tf.layers.dense(
-        tf.reshape(policy_conv, [-1, params['policy_conv_width'] * go.N * go.N]),
+        tf.reshape(
+            policy_conv, [-1, params['policy_conv_width'] * go.N * go.N]),
         go.N * go.N + 1)
 
     policy_output = tf.nn.softmax(logits, name='policy_output')
@@ -498,6 +507,13 @@ def tpu_model_inference_fn(features):
             return model_inference_fn(features, False, FLAGS.flag_values_dict())
 
 
+def maybe_set_seed():
+    if FLAGS.training_seed != 0:
+        random.seed(FLAGS.training_seed)
+        tf.set_random_seed(FLAGS.training_seed)
+        np.random.seed(FLAGS.training_seed)
+
+
 def get_estimator():
     if FLAGS.use_tpu:
         return _get_tpu_estimator()
@@ -506,9 +522,12 @@ def get_estimator():
 
 
 def _get_nontpu_estimator():
+    session_config = tf.ConfigProto()
+    session_config.gpu_options.allow_growth = True
     run_config = tf.estimator.RunConfig(
         save_summary_steps=FLAGS.summary_steps,
-        keep_checkpoint_max=FLAGS.keep_checkpoint_max)
+        keep_checkpoint_max=FLAGS.keep_checkpoint_max,
+        session_config=session_config)
     return tf.estimator.Estimator(
         model_fn,
         model_dir=FLAGS.work_dir,
@@ -552,6 +571,7 @@ def bootstrap():
     # Estimator will do this automatically when you call train(), but calling
     # train() requires data, and I didn't feel like creating training data in
     # order to run the full train pipeline for 1 step.
+    maybe_set_seed()
     initial_checkpoint_name = 'model.ckpt-1'
     save_file = os.path.join(FLAGS.work_dir, initial_checkpoint_name)
     sess = tf.Session(graph=tf.Graph())

@@ -62,9 +62,11 @@ minigo_cc_library(
         ":dual_net",
         "//cc:logging",
         ":fake_dual_net",
+        ":random_dual_net",
         "//cc:base",
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ] + factory_engine_deps,
 )
 
@@ -77,6 +79,32 @@ minigo_cc_library(
         "//cc:base",
         "//cc:logging",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+minigo_cc_library(
+    name = "inference_cache",
+    srcs = ["inference_cache.cc"],
+    hdrs = ["inference_cache.h"],
+    deps = [
+        ":dual_net",
+        "//cc:base",
+        "//cc:logging",
+        "@com_google_absl//absl/container:node_hash_map",
+    ],
+)
+
+minigo_cc_library(
+    name = "random_dual_net",
+    srcs = ["random_dual_net.cc"],
+    hdrs = ["random_dual_net.h"],
+    deps = [
+        ":dual_net",
+        "//cc:base",
+        "//cc:logging",
+        "//cc:random",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -114,6 +142,7 @@ minigo_cc_library(
         "//cc:logging",
         "//cc:tensorflow",
         "//cc:thread_safe_queue",
+        "//cc/file:path",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -130,6 +159,7 @@ minigo_cc_library(
         "//cc:base",
         "//cc:logging",
         "//cc:tf_lite",
+        "//cc/file:path",
         "//cc/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -164,6 +194,7 @@ minigo_cc_library(
         "//cc:logging",
         "//cc:tensorrt",
         "//cc:thread_safe_queue",
+        "//cc/file:path",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -191,6 +222,7 @@ minigo_cc_test(
     srcs = ["batching_dual_net_test.cc"],
     deps = [
         ":batching_dual_net",
+        ":dual_net",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
@@ -221,7 +253,19 @@ minigo_cc_test_9_only(
         ":factory",
         "//cc:logging",
         "//cc:position",
+        "//cc:random",
+        "//cc:symmetries",
         "//cc:test_utils",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+minigo_cc_test(
+    name = "inference_cache_test",
+    srcs = ["inference_cache_test.cc"],
+    deps = [
+        ":inference_cache",
+        "//cc:random",
         "@com_google_googletest//:gtest_main",
     ],
 )

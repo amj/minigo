@@ -28,9 +28,7 @@
 // Inference flags.
 DEFINE_string(model, "",
               "Path to a minigo model. The format of the model depends on the "
-              "inference engine. For engine=tf, the model should be a GraphDef "
-              "proto. For engine=lite, the model should be .tflite "
-              "flatbuffer.");
+              "inference engine.");
 DEFINE_int32(num_readouts, 100,
              "Number of readouts to make during tree search for each move.");
 
@@ -45,21 +43,23 @@ void SimpleExample() {
   const bool use_ansi_colors = FdSupportsAnsiColors(fileno(stderr));
 
   // Load the model specified by the command line arguments.
-  auto model_factory = NewDualNetFactory();
-  auto model = model_factory->NewDualNet(FLAGS_model);
-
-  // Create the player.
-  MctsPlayer::Options options;
-  options.inject_noise = false;
-  options.soft_pick = false;
-  options.num_readouts = FLAGS_num_readouts;
-  MctsPlayer player(std::move(model), options);
+  auto descriptor = ParseModelDescriptor(FLAGS_model);
+  auto model_factory = NewDualNetFactory(descriptor.engine);
+  auto model = model_factory->NewDualNet(descriptor.model);
 
   // Create a game object that tracks the move history & final score.
-  Game game(player.name(), player.name(), options.game_options);
+  Game::Options game_options;
+  Game game("black", "white", game_options);
+
+  // Create the player.
+  MctsPlayer::Options player_options;
+  player_options.inject_noise = false;
+  player_options.soft_pick = false;
+  player_options.num_readouts = FLAGS_num_readouts;
+  MctsPlayer player(std::move(model), nullptr, &game, player_options);
 
   // Play the game.
-  while (!player.root()->game_over() && !player.root()->at_move_limit()) {
+  while (!game.game_over() && !player.root()->at_move_limit()) {
     auto move = player.SuggestMove();
 
     const auto& position = player.root()->position;
@@ -70,7 +70,7 @@ void SimpleExample() {
               << " O: " << position.num_captures()[1] << "\n";
     std::cout << player.root()->Describe() << "\n";
 
-    MG_CHECK(player.PlayMove(move, &game));
+    MG_CHECK(player.PlayMove(move));
   }
 
   std::cout << game.result_string() << std::endl;

@@ -26,10 +26,10 @@ import numpy as np
 import tensorflow as tf
 
 
-TEST_SGF = "(;CA[UTF-8]SZ[9]PB[Murakawa Daisuke]PW[Iyama Yuta]KM[6.5]HA[0]RE[W+1.5]GM[1];B[fd];W[cf])"
+TEST_SGF = "(;CA[UTF-8]SZ[9]PB[Seth the best]PW[Andrew opens H4]KM[6.5]HA[0]RE[W+1.5]GM[1];B[fd];W[cf])"
 
 
-class TestPreprocessing(test_utils.MiniGoUnitTest):
+class TestPreprocessing(test_utils.MinigoUnitTest):
     def create_random_data(self, num_examples):
         raw_data = []
         for _ in range(num_examples):
@@ -70,9 +70,12 @@ class TestPreprocessing(test_utils.MiniGoUnitTest):
         return self.get_data_tensors(pos_tensor, label_tensors)
 
     def assertEqualData(self, data1, data2):
-        '''Assert that two data are equal, where both are of form:
-        data = List<Tuple<feature_array, pi_array, value>>
-        '''
+        """Assert that the two datas are equal.
+
+        Args:
+            data1: List<Tuple<feature_array, pi_array, value>>
+            data2: Same form as data1
+        """
         self.assertEqual(len(data1), len(data2))
         for datum1, datum2 in zip(data1, data2):
             # feature

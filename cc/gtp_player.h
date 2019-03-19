@@ -54,7 +54,9 @@ class GtpPlayer : public MctsPlayer {
     bool courtesy_pass = false;
   };
 
-  GtpPlayer(std::unique_ptr<DualNet> network, const Options& options);
+  GtpPlayer(std::unique_ptr<DualNet> network,
+            std::unique_ptr<InferenceCache> inference_cache, Game* game,
+            const Options& options);
 
   void Run();
   void NewGame() override;
@@ -129,7 +131,11 @@ class GtpPlayer : public MctsPlayer {
   // If waiting for the opponent to play, consider thinking for a bit.
   // Returns true if we pondered.
   bool MaybePonder();
+
   virtual void Ponder();
+
+  // Begin pondering again if requested.
+  void MaybeStartPondering();
 
   // Handles a GTP command specified by `line`.
   // Returns a (bool, string) pair containing whether the GtpPlayer should
@@ -186,8 +192,6 @@ class GtpPlayer : public MctsPlayer {
 
   absl::flat_hash_map<std::string, std::function<Response(CmdArgs)>>
       cmd_handlers_;
-
-  Game game_;
 
   ThreadSafeQueue<std::string> stdin_queue_;
 };

@@ -36,11 +36,13 @@ namespace minigo {
 
 class MiniguiPlayer : public GtpPlayer {
  public:
-  MiniguiPlayer(std::unique_ptr<DualNet> network, const Options& options);
+  MiniguiPlayer(std::unique_ptr<DualNet> network,
+                std::unique_ptr<InferenceCache> inference_cache, Game* game,
+                const Options& options);
 
   void NewGame() override;
   Coord SuggestMove() override;
-  bool PlayMove(Coord c, Game* game) override;
+  bool PlayMove(Coord c) override;
 
  protected:
   void ProcessLeaves(absl::Span<TreePath> paths, bool random_symmetry) override;
@@ -91,7 +93,6 @@ class MiniguiPlayer : public GtpPlayer {
 
   Response HandleEcho(CmdArgs args);
   Response HandleInfo(CmdArgs args);
-  Response HandlePlaysgf(CmdArgs args);
   Response HandlePruneNodes(CmdArgs args);
   Response HandleReportSearchInterval(CmdArgs args);
   Response HandleSelectPosition(CmdArgs args);

@@ -33,15 +33,15 @@
 namespace minigo {
 
 MiniguiPlayer::MiniguiPlayer(std::unique_ptr<DualNet> network,
-                             const Options& options)
-    : GtpPlayer(std::move(network), options) {
+                             std::unique_ptr<InferenceCache> inference_cache,
+                             Game* game, const Options& options)
+    : GtpPlayer(std::move(network), std::move(inference_cache), game, options) {
   RegisterCmd("clear_board", &MiniguiPlayer::HandleClearBoard);
   RegisterCmd("echo", &MiniguiPlayer::HandleEcho);
   RegisterCmd("genmove", &MiniguiPlayer::HandleGenmove);
   RegisterCmd("info", &MiniguiPlayer::HandleInfo);
   RegisterCmd("loadsgf", &MiniguiPlayer::HandleLoadsgf);
   RegisterCmd("play", &MiniguiPlayer::HandlePlay);
-  RegisterCmd("playsgf", &MiniguiPlayer::HandlePlaysgf);
   RegisterCmd("prune_nodes", &MiniguiPlayer::HandlePruneNodes);
   RegisterCmd("report_search_interval",
               &MiniguiPlayer::HandleReportSearchInterval);
@@ -63,8 +63,8 @@ Coord MiniguiPlayer::SuggestMove() {
   return move;
 }
 
-bool MiniguiPlayer::PlayMove(Coord c, Game* game) {
-  if (!GtpPlayer::PlayMove(c, game)) {
+bool MiniguiPlayer::PlayMove(Coord c) {
+  if (!GtpPlayer::PlayMove(c)) {
     return false;
   }
   RefreshPendingWinRateEvals();
@@ -201,7 +201,7 @@ GtpPlayer::Response MiniguiPlayer::HandleLoadsgf(CmdArgs args) {
 
   std::vector<std::unique_ptr<sgf::Node>> trees;
   response = ParseSgf(contents, &trees);
-  if (response.ok) {
+  if (!response.ok) {
     return response;
   }
   return ProcessSgf(trees);
@@ -213,16 +213,6 @@ GtpPlayer::Response MiniguiPlayer::HandlePlay(CmdArgs args) {
     ReportPosition(root());
   }
   return response;
-}
-
-GtpPlayer::Response MiniguiPlayer::HandlePlaysgf(CmdArgs args) {
-  auto sgf_str = absl::StrReplaceAll(absl::StrJoin(args, " "), {{"\\n", "\n"}});
-  std::vector<std::unique_ptr<sgf::Node>> trees;
-  auto response = ParseSgf(sgf_str, &trees);
-  if (!response.ok) {
-    return response;
-  }
-  return ProcessSgf(trees);
 }
 
 GtpPlayer::Response MiniguiPlayer::HandlePruneNodes(CmdArgs args) {
@@ -284,7 +274,7 @@ GtpPlayer::Response MiniguiPlayer::HandleSelectPosition(CmdArgs args) {
   // Rewind to the start & play the sequence of moves.
   ResetRoot();
   for (const auto& move : moves) {
-    MG_CHECK(PlayMove(move, &game_));
+    MG_CHECK(PlayMove(move));
   }
 
   return Response::Ok();
@@ -322,11 +312,11 @@ GtpPlayer::Response MiniguiPlayer::ProcessSgf(
             return Response::Error("cannot load file");
           }
           MG_LOG(WARNING) << "Inserting pass move";
-          MG_CHECK(PlayMove(Coord::kPass, &game_));
+          MG_CHECK(PlayMove(Coord::kPass));
           ReportPosition(root());
         }
 
-        if (!PlayMove(node.move.c, &game_)) {
+        if (!PlayMove(node.move.c)) {
           MG_LOG(ERROR) << "error playing " << node.move.ToSgf();
           return Response::Error("cannot load file");
         }
@@ -343,7 +333,7 @@ GtpPlayer::Response MiniguiPlayer::ProcessSgf(
             return response;
           }
         }
-        UndoMove(&game_);
+        UndoMove();
         return Response::Ok();
       };
 
@@ -360,7 +350,7 @@ GtpPlayer::Response MiniguiPlayer::ProcessSgf(
     for (const auto& move : trees[0]->ExtractMainLine()) {
       // We already validated that all the moves could be played in traverse(),
       // so if PlayMove fails here, something has gone seriously awry.
-      MG_CHECK(PlayMove(move.c, &game_));
+      MG_CHECK(PlayMove(move.c));
     }
     ReportPosition(root());
   }

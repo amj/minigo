@@ -44,9 +44,7 @@ DEFINE_int32(virtual_losses, 8,
 DEFINE_string(sgf_dir, "", "SGF directory containing puzzles.");
 DEFINE_string(model, "",
               "Path to a minigo model. The format of the model depends on the "
-              "inference engine. For engine=tf, the model should be a GraphDef "
-              "proto. For engine=lite, the model should be .tflite "
-              "flatbuffer.");
+              "inference engine.");
 DEFINE_double(value_init_penalty, 0.0,
               "New children value initialize penaly.\n"
               "child's value = parent's value - value_init_penalty * color, "
@@ -60,18 +58,21 @@ namespace {
 void Puzzle() {
   auto start_time = absl::Now();
 
-  BatchingDualNetFactory batcher(NewDualNetFactory());
+  auto model_desc = minigo::ParseModelDescriptor(FLAGS_model);
+  BatchingDualNetFactory batcher(NewDualNetFactory(model_desc.engine));
 
-  MctsPlayer::Options options;
-  options.game_options.resign_enabled = false;
-  options.inject_noise = false;
-  options.soft_pick = false;
-  options.random_symmetry = true;
-  options.value_init_penalty = FLAGS_value_init_penalty;
-  options.virtual_losses = FLAGS_virtual_losses;
-  options.random_seed = FLAGS_seed;
-  options.num_readouts = FLAGS_num_readouts;
-  options.verbose = false;
+  Game::Options game_options;
+  game_options.resign_enabled = false;
+
+  MctsPlayer::Options player_options;
+  player_options.inject_noise = false;
+  player_options.soft_pick = false;
+  player_options.random_symmetry = true;
+  player_options.value_init_penalty = FLAGS_value_init_penalty;
+  player_options.virtual_losses = FLAGS_virtual_losses;
+  player_options.random_seed = FLAGS_seed;
+  player_options.num_readouts = FLAGS_num_readouts;
+  player_options.verbose = false;
 
   std::atomic<size_t> total_moves(0);
   std::atomic<size_t> correct_moves(0);
@@ -96,9 +97,12 @@ void Puzzle() {
 
       total_moves += moves.size();
 
+      auto model = batcher.NewDualNet(model_desc.model);
+      Game game(model->name(), model->name(), game_options);
+
       // Create player.
-      auto player = absl::make_unique<MctsPlayer>(
-          batcher.NewDualNet(FLAGS_model), options);
+      auto player = absl::make_unique<MctsPlayer>(std::move(model), nullptr,
+                                                  &game, player_options);
       batcher.StartGame(player->network(), player->network());
 
       // Play through each game. For each position in the game, compare the
@@ -110,7 +114,7 @@ void Puzzle() {
         // Reset the game and play up to the position to be tested.
         player->NewGame();
         for (size_t i = 0; i < move_to_predict; ++i) {
-          player->PlayMove(moves[i].c, nullptr);
+          player->PlayMove(moves[i].c);
         }
 
         // Check if we predict the move that was played.
