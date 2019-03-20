@@ -54,6 +54,15 @@ flags.DEFINE_bool('use_bt', False,
 flags.DEFINE_bool('freeze', False,
                   'Whether to freeze the graph at the end of training.')
 
+flags.DEFINE_bool('train_many', False,
+                  'Whether to run train repeatedly, automatically incrementing the window')
+
+flags.DEFINE_integer('window_start_at', 10000000,
+                     'The game number to start the window at (when used with `many`)')
+
+flags.DEFINE_integer('num_repeats', 3,
+                     'Used with `many`. The number of times to increment the window and re-train.')
+
 
 flags.register_multi_flags_validator(
     ['use_bt', 'use_tpu'],
@@ -242,8 +251,12 @@ def main(argv):
     tf_records = argv[1:]
     logging.info("Training on %s records: %s to %s",
                  len(tf_records), tf_records[0], tf_records[-1])
-    with utils.logged_timer("Training"):
-        train(*tf_records)
+    if FLAGS.train_many:
+      with utils.logged_timer("Training"):
+        train_many(FLAGS.start_at, FLAGS.num_datasets) 
+    else:
+      with utils.logged_timer("Training"):
+          train(*tf_records)
     if FLAGS.export_path:
         dual_net.export_model(FLAGS.export_path)
     if FLAGS.freeze:
