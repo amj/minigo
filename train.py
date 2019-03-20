@@ -253,7 +253,7 @@ def main(argv):
     """Train on examples and export the updated model weights."""
     if FLAGS.train_many:
       with utils.logged_timer("Training"):
-        train_many(FLAGS.start_at, FLAGS.num_datasets)
+        train_many(FLAGS.window_start_at, FLAGS.num_datasets)
     else:
       tf_records = argv[1:]
       logging.info("Training on %s records: %s to %s",
