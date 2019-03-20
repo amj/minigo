@@ -148,7 +148,7 @@ class UpdateRatioSessionHook(tf.train.SessionRunHook):
             self.before_weights = None
 
 
-def train_many(start_at=1000000, num_datasets=3):
+def train_many(start_at=1000000, num_datasets=3, moves=2**24):
     """ Trains on a set of bt_datasets, skipping eval for now.
     (from preprocessing.get_many_tpu_bt_input_tensors)
     """
@@ -167,6 +167,8 @@ def train_many(start_at=1000000, num_datasets=3):
 
         return preprocessing.get_many_tpu_bt_input_tensors(
             games, games_nr, params['batch_size'],
+            moves=moves,
+            window_size=FLAGS.window_size,
             start_at=start_at, num_datasets=num_datasets)
 
     hooks = []
@@ -253,7 +255,7 @@ def main(argv):
                  len(tf_records), tf_records[0], tf_records[-1])
     if FLAGS.train_many:
       with utils.logged_timer("Training"):
-        train_many(FLAGS.start_at, FLAGS.num_datasets) 
+        train_many(FLAGS.start_at, FLAGS.num_datasets)
     else:
       with utils.logged_timer("Training"):
           train(*tf_records)
