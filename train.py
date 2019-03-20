@@ -172,6 +172,7 @@ def train_many(start_at=1000000, num_datasets=3, moves=2**24):
             start_at=start_at, num_datasets=num_datasets)
 
     hooks = []
+
     steps = num_datasets * FLAGS.steps_to_train
     logging.info("Training, steps = %s, batch = %s -> %s examples",
                  steps or '?', effective_batch_size,
@@ -250,13 +251,13 @@ def train(*tf_records: "Records to train on"):
 
 def main(argv):
     """Train on examples and export the updated model weights."""
-    tf_records = argv[1:]
-    logging.info("Training on %s records: %s to %s",
-                 len(tf_records), tf_records[0], tf_records[-1])
     if FLAGS.train_many:
       with utils.logged_timer("Training"):
         train_many(FLAGS.start_at, FLAGS.num_datasets)
     else:
+      tf_records = argv[1:]
+      logging.info("Training on %s records: %s to %s",
+                   len(tf_records), tf_records[0], tf_records[-1])
       with utils.logged_timer("Training"):
           train(*tf_records)
     if FLAGS.export_path:
