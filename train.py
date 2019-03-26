@@ -58,10 +58,10 @@ flags.DEFINE_bool('train_many', False,
                   'Whether to run train repeatedly, automatically incrementing the window')
 
 flags.DEFINE_integer('window_start_at', 10000000,
-                     'The game number to start the window at (when used with `many`)')
+                     'Used with `train_many`.  The game number where the window begins')
 
-flags.DEFINE_integer('num_repeats', 3,
-                     'Used with `many`. The number of times to increment the window and re-train.')
+flags.DEFINE_integer('num_datasets', 3,
+                     'Used with `train_many`. The number of times to increment the window and re-train.')
 
 
 flags.register_multi_flags_validator(
