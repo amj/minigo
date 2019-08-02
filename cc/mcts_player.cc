@@ -40,6 +40,8 @@ std::ostream& operator<<(std::ostream& os, const MctsPlayer::Options& options) {
      << " seconds_per_move:" << options.seconds_per_move
      << " time_limit:" << options.time_limit
      << " decay_factor:" << options.decay_factor
+     << " fastplay_frequency:" << options.fastplay_frequency
+     << " fastplay_readouts:" << options.fastplay_readouts
      << " random_seed:" << options.random_seed << std::flush;
   return os;
 }
@@ -114,7 +116,7 @@ bool MctsPlayer::UndoMove() {
   return true;
 }
 
-Coord MctsPlayer::SuggestMove() {
+Coord MctsPlayer::SuggestMove(bool fastplay) {
   auto start = absl::Now();
 
   // In order to correctly count the number of reads performed, the root node
@@ -127,7 +129,7 @@ Coord MctsPlayer::SuggestMove() {
     ProcessLeaves(tree_search_leaves_, options_.random_symmetry);
   }
 
-  if (options_.inject_noise) {
+  if (options_.inject_noise && ! fastplay) {
     std::array<float, kNumMoves> noise;
     rnd_.Dirichlet(kDirichletAlpha, &noise);
     root_->InjectNoise(noise, options_.noise_mix);
@@ -147,6 +149,8 @@ Coord MctsPlayer::SuggestMove() {
     }
   } else {
     // Use a fixed number of reads.
+    auto limit = current_readouts + (fastplay ? options_.fastplay_readouts :
+                                     options_.num_readouts);
     while (root_->N() < current_readouts + options_.num_readouts) {
       TreeSearch();
     }

@@ -92,6 +92,23 @@ class MctsPlayer {
     // move is played.
     bool tree_reuse = true;
 
+    // "Playout Cap Oscillation" as per the KataGo paper.
+    // If fastplay_frequency > 0, tree search is modified as follows:
+    //   - Each move is either a "low-readout" fast move, or a full, slow move.
+    //   The percent of fast moves corresponds to "fastplay_frequency"
+    //   - A "fast" move will:
+    //     - Reuse the tree
+    //     - Not mix noise in at root
+    //     - Only perform 'fastplay_readouts' readouts.
+    //     - Not be used as a training target.
+    //   - A "slow" move will:
+    //     - Clear the tree (*not* the cache).
+    //     - Mix in dirichlet noise
+    //     - Perform 'num_readouts' readouts.
+    //     - Be noted in the Game object, to be written as a training example.
+    float fastplay_frequency = 0;
+    int fastplay_readouts = 20;
+
     friend std::ostream& operator<<(std::ostream& ios, const Options& options);
   };
 
