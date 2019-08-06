@@ -13,88 +13,6 @@ load(
     "minigo_cc_test_9_only",
 )
 
-cc_library(
-    name = "tensorflow_dynamic",
-    srcs = [
-        "tensorflow/libtensorflow_framework.so",
-    ] + select({
-        "//cc/config:enable_tpu": ["tensorflow/libgrpc_runtime.so"],
-        "//conditions:default": ["tensorflow/libtensorflow_cc.so"],
-    }),
-    hdrs = glob(
-        ["tensorflow/**/*"],
-        exclude = [
-            "**/*.a",
-            "**/*.so",
-            "tensorflow/flatbuffers/**",
-            "tensorflow/tensorflow/lite/**",
-        ],
-    ),
-    includes = [
-        "tensorflow",
-        "tensorflow/external/nsync/public",
-    ],
-    tags = ["manual"],
-)
-
-# TODO(tommadams): Set this up for windows compilation.
-cc_library(
-    name = "tensorflow_static",
-    srcs = [],
-    hdrs = [],
-    tags = ["manual"],
-)
-
-cc_library(
-    name = "tensorflow",
-    tags = ["manual"],
-    deps = select({
-        "@bazel_tools//src/conditions:windows": ["tensorflow_static"],
-        "//conditions:default": ["tensorflow_dynamic"],
-    }),
-)
-
-cc_library(
-    name = "tf_lite",
-    srcs = [
-        "tensorflow/libtensorflow_lite.a",
-    ],
-    hdrs = glob(
-        [
-            "tensorflow/flatbuffers/*.h",
-            "tensorflow/tensorflow/lite/**",
-        ],
-        exclude = ["**/*.so"],
-    ),
-    includes = ["tensorflow"],
-    linkopts = ["-ldl"],
-    tags = ["manual"],
-)
-
-cc_library(
-    name = "cuda",
-    tags = ["manual"],
-    deps = select({
-        "//cc/config:enable_gpu": [
-            "@local_config_cuda//:cuda_headers",
-            "@local_config_cuda//:cudart",
-        ],
-        "//conditions:default": [],
-    }),
-)
-
-cc_library(
-    name = "tensorrt",
-    tags = ["manual"],
-    deps = [
-        "@local_config_cuda//:cuda_headers",
-        "@local_config_cuda//:cudart",
-        "@local_config_tensorrt//:nv_infer",
-        "@local_config_tensorrt//:nvparsers",
-        "@local_config_tensorrt//:tensorrt_headers",
-    ],
-)
-
 minigo_cc_library(
     name = "base",
     srcs = [
@@ -346,7 +264,7 @@ minigo_cc_library(
                "//conditions:default": [],
            }) +
            select({
-               "//cc/config:enable_tf": ["//cc:tensorflow"],
+               "//cc/config:enable_tf": ["//cc/tensorflow"],
                "//conditions:default": [],
            }),
 )
@@ -593,8 +511,8 @@ cc_binary(
         ":init",
         ":logging",
         ":random",
-        ":tensorflow",
         ":thread",
+        "//cc/tensorflow",
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -643,20 +561,10 @@ minigo_cc_binary(
     srcs = ["tpu_test.cc"],
     tags = ["manual"],
     deps = [
-        ":tensorflow",
+        "//cc/tensorflow",
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-    ],
-)
-
-minigo_cc_binary(
-    name = "position_benchmark",
-    srcs = ["position_benchmark.cc"],
-    deps = [
-        ":base",
-        ":position",
-        "@com_google_benchmark//:benchmark",
     ],
 )
