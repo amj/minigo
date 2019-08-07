@@ -72,6 +72,8 @@ class Game {
     // This is used to build training features after a selfplay game has
     // finished.
     Position::Stones stones;
+
+    bool trainable = false;
   };
 
   enum class GameOverReason {
@@ -94,6 +96,9 @@ class Game {
                std::vector<std::string> models);
 
   void UndoMove();
+
+  // Marks the most recent move as trainable.
+  void SaveLastMove();
 
   void SetGameOverBecauseOfPasses(float score);
 

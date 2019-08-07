@@ -128,7 +128,7 @@ class MctsPlayer {
 
   virtual void NewGame();
 
-  virtual Coord SuggestMove();
+  virtual Coord SuggestMove(int new_readouts, bool inject_noise);
 
   // Plays the move at point c.
   // If game is non-null, adds a new move to the game's move history and sets

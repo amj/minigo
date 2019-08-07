@@ -116,7 +116,7 @@ bool MctsPlayer::UndoMove() {
   return true;
 }
 
-Coord MctsPlayer::SuggestMove(bool fastplay) {
+Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
   auto start = absl::Now();
 
   // In order to correctly count the number of reads performed, the root node
@@ -129,7 +129,7 @@ Coord MctsPlayer::SuggestMove(bool fastplay) {
     ProcessLeaves(tree_search_leaves_, options_.random_symmetry);
   }
 
-  if (options_.inject_noise && ! fastplay) {
+  if (inject_noise) {
     std::array<float, kNumMoves> noise;
     rnd_.Dirichlet(kDirichletAlpha, &noise);
     root_->InjectNoise(noise, options_.noise_mix);
@@ -149,9 +149,7 @@ Coord MctsPlayer::SuggestMove(bool fastplay) {
     }
   } else {
     // Use a fixed number of reads.
-    auto limit = current_readouts + (fastplay ? options_.fastplay_readouts :
-                                     options_.num_readouts);
-    while (root_->N() < current_readouts + options_.num_readouts) {
+    while (root_->N() < current_readouts + new_readouts) {
       TreeSearch();
     }
   }
@@ -266,7 +264,7 @@ std::string MctsPlayer::GetModelsUsedForInference() const {
 
 bool MctsPlayer::PlayMove(Coord c) {
   if (root_->game_over()) {
-    MG_LOG(ERROR) << "can't play move " << c << ", game is over";
+    MG_LOG(ERROR) << "Can't play move " << c << ", game is over";
     return false;
   }
 

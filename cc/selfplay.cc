@@ -94,15 +94,15 @@ DEFINE_string(flags_path, "",
               "Note that flags_path is different from gflags flagfile, which "
               "is only parsed once on startup.");
 
-DEFINE_double(fastplay_frequency, 0.0, 
+DEFINE_double(fastplay_frequency, 0.0,
               "The fraction of moves that should use a lower number of "
               "playouts, aka 'playout cap oscillation'.\nIf this is set, "
-              "'fastplay_readouts' should also be set."
+              "'fastplay_readouts' should also be set.");
 
 DEFINE_int32(fastplay_readouts, 20,
               "The number of readouts to perform on a 'low readout' move, "
               "aka 'playout cap oscillation'.\nIf this is set, "
-              "'fastplay_frequency' should be nonzero."
+              "'fastplay_frequency' should be nonzero.");
 
 // Time control flags.
 DEFINE_double(seconds_per_move, 0,
@@ -168,9 +168,8 @@ void ParseOptionsFromFlags(Game::Options* game_options,
   player_options->seconds_per_move = FLAGS_seconds_per_move;
   player_options->time_limit = FLAGS_time_limit;
   player_options->decay_factor = FLAGS_decay_factor;
-  player_options->fastplay_frequency = FLAGS_fastplay_frequency
-  player_options->fastplay_readouts = FLAGS_fastplay_readouts
-}
+  player_options->fastplay_frequency = FLAGS_fastplay_frequency;
+  player_options->fastplay_readouts = FLAGS_fastplay_readouts;
 }
 
 void LogEndGameInfo(const Game& game, absl::Duration game_time) {
@@ -372,9 +371,11 @@ class SelfPlayer {
         }
 
         bool fastplay = (rnd_() < thread_options.player_options.fastplay_frequency);
+        int readouts = (fastplay ? thread_options.player_options.fastplay_readouts :
+                                    thread_options.player_options.num_readouts);
 
-        // Choose the move to play.
-        auto move = player->SuggestMove(fastplay);
+        // Choose the move to play, optionally adding noise.
+        auto move = player->SuggestMove(readouts, !fastplay);
 
         // Log tree search stats.
         if (thread_options.verbose) {
@@ -390,15 +391,21 @@ class SelfPlayer {
                        << player->options().virtual_losses << ")";
           MG_LOG(INFO) << root->CalculateTreeStats().ToString();
 
-          MG_LOG(INFO) << root->position.ToPrettyString(use_ansi_colors);
-          MG_LOG(INFO) << "Move: " << position.n()
-                       << " Captures X: " << position.num_captures()[0]
-                       << " O: " << position.num_captures()[1];
-          MG_LOG(INFO) << root->Describe();
+          if (!fastplay) {
+            MG_LOG(INFO) << root->position.ToPrettyString(use_ansi_colors);
+            MG_LOG(INFO) << "Move: " << position.n()
+                         << " Captures X: " << position.num_captures()[0]
+                         << " O: " << position.num_captures()[1];
+            MG_LOG(INFO) << root->Describe();
+          }
         }
 
         // Play the chosen move.
         MG_CHECK(player->PlayMove(move));
+
+        if (!fastplay) {
+          (*game).SaveLastMove();
+        }
 
         // Log information about the move played.
         if (thread_options.verbose) {
