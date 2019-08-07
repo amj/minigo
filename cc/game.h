@@ -97,8 +97,7 @@ class Game {
 
   void UndoMove();
 
-  // Marks the most recent move as trainable.
-  void SaveLastMove();
+  void MarkLastMoveAsTrainable();
 
   void SetGameOverBecauseOfPasses(float score);
 
