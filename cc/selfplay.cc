@@ -404,7 +404,7 @@ class SelfPlayer {
         MG_CHECK(player->PlayMove(move));
 
         if (!fastplay) {
-          (*game).SaveLastMove();
+          (*game).MarkLastMoveAsTrainable();
         }
 
         // Log information about the move played.
