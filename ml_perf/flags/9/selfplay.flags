@@ -4,12 +4,14 @@
 # the RL loop.
 
 --num_games=4096
---num_readouts=240
+--num_readouts=80
+--fastplay_frequency=0.3
+--fastplay_readouts=400
 --value_init_penalty=0.2
---holdout_pct=0.03
---disable_resign_pct=0.1
+--holdout_pct=0.00
+--disable_resign_pct=1.0
 --resign_threshold=-0.99
 
 # Device-specific selfplay flags.
---parallel_games=2048
+--parallel_games=1024
 --virtual_losses=8
