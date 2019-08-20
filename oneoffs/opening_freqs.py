@@ -19,7 +19,7 @@ from hashlib import sha256
 import sqlite3
 import random
 import multiprocessing as mp
-from collections import Counter
+from collections import Counter, namedtuple, defaultdict
 import re
 import os
 import coords
@@ -38,6 +38,7 @@ flags.DEFINE_integer("max_patterns", 5000,
 flags.DEFINE_integer("threads", 8, "Number of threads to use.")
 flags.DEFINE_float("sample_frac", 1.0,
                    "Fraction of sgfs in a directory to parse")
+flags.DEFINE_bool("update_summaries", False, "Scan no files; instead, update metadata on existing entries")
 
 
 def sha(sequence):
@@ -69,8 +70,28 @@ CREATE TABLE IF NOT EXISTS game_counts_by_hour(
   hour text,
   count integer
 );
+
+CREATE TABLE IF NOT EXISTS joseki_summary (
+  id integer primary key,
+  seq text,
+  run text,
+  next_moves text, -- format is e.g. "'B[qd];': 0.12, 'B[];': 0.54" etc.
+  count integer,
+
+  UNIQUE(seq,run)
+);
+
 CREATE INDEX IF NOT EXISTS seq_index on joseki (seq);
+CREATE INDEX IF NOT EXISTS seq_index on joseki_summary (seq);
+CREATE INDEX IF NOT EXISTS seq_run on joseki_summary (seq,run);
 """
+
+
+def namedtuple_factory(cursor, row):
+    """Returns sqlite rows as named tuples."""
+    fields = [col[0] for col in cursor.description]
+    Row = namedtuple("Row", fields)
+    return Row(*row)
 
 
 def move_to_corner(move):
@@ -199,7 +220,7 @@ def analyze_dir(directory):
             cur = db.cursor()
             cur.execute(""" INSERT INTO joseki(seq, length, num_tenukis) VALUES(?, ?, ?)
                  ON CONFLICT DO NOTHING """,
-                        (c[0], c[0].find(';'), count_tenukis(c[0])))
+                        (c[0], len(c[0].split(';')[:-1]), count_tenukis(c[0])))
             cur.execute("""
                  INSERT INTO joseki_counts(seq, hour, count, run, example_sgf) VALUES (?, ?, ?, ?, ?) ON CONFLICT(seq,hour) DO UPDATE SET count=count + ?
                  """,
@@ -219,12 +240,58 @@ def count_tenukis(seq):
     return (sum(1 for _ in re.finditer('(?=BB)', colors)) +
             sum(1 for _ in re.finditer('(?=WW)', colors)))
 
+def update_summaries():
+    db = sqlite3.connect(FLAGS.db_path)
+    #db.row_factory = namedtuple_factory
+
+    all_min_joseki = [j[0] for j in db.execute("""
+        select seq from joseki where length = ? order by seq""",
+                                               (MIN_JOSEKI_LENGTH+2,)).fetchall()]
+    next_moves = defaultdict(set)
+
+    while all_min_joseki:
+        j = all_min_joseki.pop()
+        p = j.split(';')[:-1]
+        last = p.pop()
+        if len(p) :
+            new_p = ';'.join(p) + ';'
+            next_moves[new_p].add(last)
+            all_min_joseki.append(new_p)
+
+    # We now have a dict of {prefix: {set_of_next_moves}}
+    # Todo, multithread this
+    for root, nexts in tqdm(next_moves.items()):
+        tots = dict(db.execute("""
+                 select run, sum(count) from joseki_counts where seq like (?) group by 1;
+                               """, (root + '%', )).fetchall())
+        if sum(tots.values()) < 10:
+            continue
+
+        # tots = {'v15': 12345, ...}
+        for run in tots:
+            root_next = {}
+            for move in nexts:
+                run_count = db.execute("""
+                     select sum(count) from joseki_counts where seq like (?) and run = ?;
+                                         """, (root + move + ';%', run)).fetchone()[0]
+                root_next[move] = (run_count or 0) / tots[run]
+            db.execute("""
+                      insert into joseki_summary(seq, run, next_moves, count) values (?, ?, ?, ?)
+                       """, (root, run, str(root_next), tots[run]))
+        db.commit()
+
 
 def main(_):
     """Entrypoint for absl.app"""
     db = sqlite3.connect(FLAGS.db_path)
     db.executescript(SCHEMA)
     db.close()
+
+    if FLAGS.update_summaries:
+        update_summaries()
+        return
+
+    1/0
 
     root = FLAGS.in_dir
     dirs = [os.path.join(root, d) for d in os.listdir(root)
