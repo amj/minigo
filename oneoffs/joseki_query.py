@@ -24,6 +24,8 @@ import datetime as dt
 from absl import flags
 from flask import Flask, g
 from timeit import default_timer as timer
+
+import os
 import flask
 
 import oneoffs.opening_freqs_export as ofe
@@ -79,35 +81,38 @@ def nexts():
 
     res = {'count': 0, 'next_moves': {}}
 
-    s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
-    if not s_id:
-        return flask.Response(json.dumps(res), mimetype='text/json')
+    if not prefix:
+        nexts = db.execute("select distinct(substr(seq, 0, 7)), count(*) from joseki group  by 1;").fetchall()
+        total = sum([n[1] for n in nexts])
     else:
-        s_id = s_id[0]
+        s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
+        if not s_id:
+            return flask.Response(json.dumps(res), mimetype='text/json')
+        else:
+            s_id = s_id[0]
 
-    if run is None:
-        nexts = db.execute("""
-                           select next_move, sum(count) from next_moves where seq_id = ? group by 1
-                           """, (s_id,)).fetchall()
-        total = db.execute("select sum(count) from joseki_counts where seq_id = ?",
-                           (s_id,)).fetchone()[0]
-    else:
-        start = timer()
-        nexts = db.execute("""
-                           select next_move, sum(nm.count)
-                           from next_moves as nm join joseki_counts as jc
-                           on jc.id == nm.joseki_hour_id
-                           where nm.seq_id = ? and jc.run = ? group by 1
-                           """, (s_id, run)).fetchall()
-        end = timer()
-        print('%.4f seconds for fancy join.' % (end-start,))
-        total = db.execute("select sum(count) from joseki_counts where seq_id = ? and run=?",
-                           (s_id, run)).fetchone()[0]
+        if run is None:
+            nexts = db.execute("""
+                               select next_move, sum(count) from next_moves where seq_id = ? group by 1
+                               """, (s_id,)).fetchall()
+            total = db.execute("select sum(count) from joseki_counts where seq_id = ?",
+                               (s_id,)).fetchone()[0]
+        else:
+            start = timer()
+            nexts = db.execute("""
+                               select next_move, sum(nm.count)
+                               from next_moves as nm join joseki_counts as jc
+                               on jc.id == nm.joseki_hour_id
+                               where nm.seq_id = ? and jc.run = ? group by 1
+                               """, (s_id, run)).fetchall()
+            end = timer()
+            print('%.4f seconds for fancy join.' % (end-start,))
+            total = db.execute("select sum(count) from joseki_counts where seq_id = ? and run=?",
+                               (s_id, run)).fetchone()[0]
 
     if not nexts:
+        print("Some kind of error, post params:", d['params'])
         return flask.Response(json.dumps(res), mimetype='text/json')
-
-
 
     next_moves = {}
     tot = 0
@@ -120,22 +125,49 @@ def nexts():
 
     max_v = max(next_moves.values())
 
-    next_moves = {k:v/max_v for k,v in next_moves.items() if v > 0.001}
+    next_moves = {k:v / max_v for k,v in next_moves.items() if v > 0.001}
     res = {'count': total,
            'next_moves': next_moves}
 
     return flask.Response(json.dumps(res), mimetype='text/json')
 
 
+@app.route("/games", methods=["POST"])
+def games():
+    d = json.loads(flask.request.data.decode('utf-8'))
+    prefix = d['params']['sgf']
+    sort_hour = d['params']['sort']
+    run = d['params']['run']
+    page = d['params']['page'] -1
+
+    db = get_db()
+    db.set_trace_callback(print)
+
+    assert(sort_hour.lower() == 'desc' or sort_hour.lower() == 'asc')
+
+    s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
+    if not s_id:
+        return flask.Response(json.dumps({'rows': []}), mimetype='text/json')
+    s_id = s_id[0]
+
+    q = """select example_sgf, hour, run from joseki_counts
+        where seq_id=? {} order by hour {} limit 30 offset ?""".format(
+            "and run = ?" if run else "", sort_hour)
+
+    if run:
+        rows = db.execute(q, (s_id, run, page * 30)).fetchall()
+    else:
+        rows = db.execute(q, (s_id, page * 30)).fetchall()
+    res = [ {'game': os.path.basename(r[0]), 'hour': r[1], 'run': r[2]} for r in rows]
+
+    return flask.Response(json.dumps({'rows': res}), mimetype='text/json')
+
+
 @app.route("/search", methods=["POST"])
 def search():
     d = json.loads(flask.request.data.decode('utf-8'))
     print(d)
-    sgf = d['params']['sgf']
-
-    query = sgf
-    if len(sgf) < MIN_PATTERN_LENGTH:
-        print("error")
+    query = d['params']['sgf']
 
     print(query)
     print('querying')

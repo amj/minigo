@@ -19,9 +19,9 @@ import axios from 'axios';
 import colormap from 'colormap';
 
 import {range, flatten} from 'lodash';
-import go from 'godash';
 import godash from 'godash';
-import {Goban} from './goban';
+//import {Goban} from 'godash';
+import {MyGoban} from './goban';
 
 import Button from '@material-ui/core/Button';
 import ToggleButtonGroup from '@material-ui/lab/ToggleButtonGroup';
@@ -31,7 +31,17 @@ import Grid from '@material-ui/core/Grid';
 import AppBar from '@material-ui/core/AppBar';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
+import Table from '@material-ui/core/Table';
+import TableBody from '@material-ui/core/TableBody';
+import TableCell from '@material-ui/core/TableCell';
+import TableHead from '@material-ui/core/TableHead';
+import TableSortLabel from '@material-ui/core/TableSortLabel';
+import TableRow from '@material-ui/core/TableRow';
+import Paper from '@material-ui/core/Paper';
 import {styled} from '@material-ui/styles';
+import IconButton from '@material-ui/core/IconButton';
+import KeyboardArrowLeft from '@material-ui/icons/KeyboardArrowLeft';
+import KeyboardArrowRight from '@material-ui/icons/KeyboardArrowRight';
 
 import Chart from 'react-google-charts';
 import KeyboardEventHandler from 'react-keyboard-event-handler';
@@ -53,11 +63,11 @@ const colors = colormap({
 
 // Lol "const"
 const defaultHighlights = {}
-defaultHighlights[colors[0]] = flatten(range(10).map(idx => {
-        return range(10-idx).map(jdx => {
-          return {x: 18-idx, y:9-jdx };
-        });
-      }));
+defaultHighlights[colors[5]] = flatten(range(10).map(idx => {
+  return range(10-idx).map(jdx => {
+    return {x: 18-idx, y:9-jdx };
+  });
+}));
 
 class DefaultDict {
   constructor(defaultInit) {
@@ -71,6 +81,9 @@ class DefaultDict {
   }
 }
 
+const topLeft = {x: 9, y: 0};
+const bottomRight = {x: 18, y: 9};
+
 class Joseki extends React.Component {
   constructor(props) {
         super(props);
@@ -78,23 +91,31 @@ class Joseki extends React.Component {
           moves: "",
           board: new godash.Board(),
           nextColor: godash.BLACK,
-          passNext: true,  // was 'pass' one of the next moves played here.
+          passNext: true,  // was 'tenuki' one of the next moves played here.
           other_highlights: defaultHighlights, // if so, what moves were considered then?
           highlights: defaultHighlights,
           search_enabled: false,
+          chartData: null,
           tableData: null,
           count: null,
           run: null,
+          tableHourSort: 'desc',
+          tablePage: 1,
         };
 
         this.resetBoard = this.resetBoard.bind(this);
         this.coordinateClicked = this.coordinateClicked.bind(this);
-        this.search = this.search.bind(this);
-        this.pass = this.pass.bind(this);
+        this.updateGraph = this.updateGraph.bind(this);
+        this.findGames = this.findGames.bind(this);
+        this.tenuki = this.tenuki.bind(this);
         this.handleRunChange = this.handleRunChange.bind(this);
         this.prevMove = this.prevMove.bind(this);
         this.handleKeyDown = this.handleKeyDown.bind(this);
+        this.toggleHourSort = this.toggleHourSort.bind(this);
+        this.handleNextButtonClick = this.handleNextButtonClick.bind(this);
+        this.handlePrevButtonClick = this.handlePrevButtonClick.bind(this);
 
+        this.updateHeatmap();
 }
 
   handleKeyDown(key, e) {
@@ -103,17 +124,34 @@ class Joseki extends React.Component {
     }
   }
 
+  handleNextButtonClick() {
+    this.setState(
+        {tablePage: this.state.tablePage + 1},
+        () => {this.findGames();}
+    );
+  }
+  handlePrevButtonClick() {
+    this.setState(
+        {tablePage: this.state.tablePage - 1},
+        () => {this.findGames();}
+    );
+  }
+
   resetBoard() {
     this.setState({
       board: new godash.Board(),
       nextColor: godash.BLACK,
       passNext: true,
       moves: "",
-      highlights: defaultHighlights,
-      other_highlights: defaultHighlights,
+      highlights: null,
+      other_highlights: null,
+      chartData: null,
       tableData: null,
+      tablePage: 1,
       search_enabled: false,
       run: null,
+    }, () => {
+      this.updateHeatmap();
     });
   }
 
@@ -138,7 +176,7 @@ class Joseki extends React.Component {
       }, () => { 
         this.updateHeatmap();
         if(num_moves >= 1) {
-          this.search();
+          this.updateGraph();
         }
       });
 
@@ -148,8 +186,13 @@ class Joseki extends React.Component {
     this.setState({
       run: newRun,
     }, () => {
-      console.log('run changed to', this.state.run);
       this.updateHeatmap();
+      if (this.state.tableData) {
+        this.findGames();
+        this.setState({
+          tablePage: 1
+        });
+      }
     });
   }
 
@@ -167,7 +210,7 @@ class Joseki extends React.Component {
       }, () => {
         this.updateHeatmap();
         if(num_moves >= 1) {
-          this.search();
+          this.updateGraph();
         }
       });
   }
@@ -202,7 +245,7 @@ class Joseki extends React.Component {
       });
   }
 
-  pass() {
+  tenuki() {
       this.setState({
           nextColor: (this.state.nextColor === godash.BLACK ? godash.WHITE : godash.BLACK),
           other_highlights: this.state.highlights,
@@ -210,7 +253,7 @@ class Joseki extends React.Component {
       });
   }
 
-  search() {
+  updateGraph() {
     axios.post('/search', {
       params: {
         sgf: this.state.moves,
@@ -218,13 +261,37 @@ class Joseki extends React.Component {
     }).then(response => {
       console.log(response.data);
       this.setState({
-        tableData: [response.data.cols, ...response.data.rows]
+        chartData: [response.data.cols, ...response.data.rows]
       });
 
     });
   }
 
+  toggleHourSort() {
+    this.setState({
+      tableHourSort: this.state.tableHourSort === 'desc' ? 'asc' : 'desc'
+    }, () => {this.findGames();}
+    );
+  }
+
+  findGames() {
+    axios.post('/games', {
+      params: {
+        sgf: this.state.moves,
+        run: this.state.run,
+        sort: this.state.tableHourSort,
+        page: this.state.tablePage,
+      }
+    }).then(response => {
+      console.log(response.data);
+      this.setState({
+        tableData: response.data.rows
+      });
+    });
+  }
+
   render() {
+    var num_moves = (this.state.moves.match(/;/g)||[]).length;
     return (
       <div className="App">
         <KeyboardEventHandler
@@ -235,16 +302,13 @@ class Joseki extends React.Component {
 
         <AppBar position="static">
           <Toolbar>
-                <h3 className="{classes.title}">
-                  Joseki Explorer
-                </h3>
+              <h2 align='left' className="{classes.title}">
+                    {this.state.moves ? this.state.moves : "Joseki Explorer"}
+              </h2>
           </Toolbar>
         </AppBar>
         <div style={{ marginTop:20 }}> </div>
         <Container>
-              <Typography variant="h4" align='left' gutterBottom>
-              {this.state.moves ? this.state.moves : "The active sequence will appear here"}
-              </Typography>
               <Typography variant="h5" align='left' gutterBottom>
               { this.state.moves ?
                 <p>Seen: {this.state.count} times </p>
@@ -252,28 +316,33 @@ class Joseki extends React.Component {
               }
               </Typography>
 
-          <Grid container justify="flex-start" spacing={1}>
+          <Grid container justify="flex-start" spacing={3}>
             <Grid item xs={6}>
-                <Goban
+                <MyGoban
                     board={this.state.board}
                     onCoordinateClick={this.coordinateClicked}
                     highlights={this.state.highlights}
-                    view_window={{x:[8,19], y:[0,10]}} 
+                    topLeft={topLeft}
+                    bottomRight={bottomRight}
+                    view_window={{x:[8,19], y:[0,10]}}
                 />
-                <MyButton variant="contained" onClick={this.search}
-                          color="primary" disabled={!this.state.search_enabled}>Search</MyButton>
-                <MyButton variant="contained" onClick={this.pass}
+                <MyButton variant="contained" onClick={this.findGames}
+                          color="primary" disabled={!this.state.search_enabled}>Search Games</MyButton>
+                <MyButton variant="contained" onClick={this.tenuki}
                           color={this.state.passNext ? "secondary" : "default"}>Tenuki</MyButton>
                 <MyButton variant="contained" onClick={this.resetBoard}>Clear</MyButton>
+            {num_moves > 0 ? (
             <ToggleButtonGroup variant="contained" exclusive value={this.state.run} onChange={this.handleRunChange} size='small'>
                 <ToggleButton variant="contained" value="v15">v15</ToggleButton>
                 <ToggleButton variant="contained" value="v16">v16</ToggleButton>
                 <ToggleButton variant="contained" value="v17">v17</ToggleButton>
             </ToggleButtonGroup>
+            ) : <div></div>
+            }
             </Grid>
 
             <Grid item xs={6}>
-            {this.state.tableData === null ? (<div >
+            {this.state.chartData === null ? (<div >
               <Typography variant="h5" align='left' gutterBottom>
               <p> Explore Minigo's most common opening moves during its training by clicking on the board to the left. </p>
               </Typography>
@@ -281,12 +350,13 @@ class Joseki extends React.Component {
               <p> For sequences longer than two moves, a frequency graph will appear here showing the openings' popularity over time. </p>
               <p> Joseki's beginning with black or white are tabulated independently, as are transpositions.</p>
               <p> If tenuki was a frequently played option, 'tenuki' button will be enabled to toggle the next color to be played. </p>
+              <p> "Search Games" will find selfplay games featuring the current pattern. </p>
               </Typography>
               </div>) :
                 <Chart
                     loader={ <p> Chart loading... </p> }
                     chartType="ScatterChart"
-                    data={this.state.tableData}
+                    data={this.state.chartData}
                     options = {{
                               title: `How frequently this sequence was seen over training`,
                               hAxis: {title: '% of training',
@@ -297,8 +367,47 @@ class Joseki extends React.Component {
                               pointSize: 3,
                     }}
                     height={'600px'}
-                    width={'800px'}
                 />
+            }
+            </Grid>
+            <Grid item xs={12}>
+            {this.state.tableData === null ? <div> </div> : 
+              <Paper>
+                <Typography variant="h5" align="left" style={{ padding:20 }} >
+                  Example Games
+
+                  <IconButton onClick={this.handlePrevButtonClick} disabled={this.state.tablePage === 1} aria-label="previous page">
+                  <KeyboardArrowLeft/> </IconButton>
+                  {this.state.tablePage}
+                  <IconButton onClick={this.handleNextButtonClick} aria-label="next page">
+                  <KeyboardArrowRight/> </IconButton>
+                </Typography>
+
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell> Game </TableCell>
+                      <TableCell>
+                        <TableSortLabel
+                            direction={this.state.tableHourSort}
+                            onClick={this.toggleHourSort} /> Hour </TableCell>
+                      <TableCell> Run </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {this.state.tableData.map(row => (
+                      <TableRow key={row.game}>
+                        <TableCell scope="row">
+                          <a href={"http://cloudygo.com/" + row.run + "-19x19/joseki/full/" + row.game}
+                            target="_blank">{row.game}</a>
+                        </TableCell>
+                        <TableCell align="left"> {row.hour} </TableCell>
+                        <TableCell align="left"> {row.run} </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Paper>
             }
             </Grid>
           </Grid>

@@ -36,7 +36,7 @@ function Highlight({x, y, color, cellSize}) {
         width={cellSize} height={cellSize}/>;
 }
 
-export class Goban extends Component {
+export class MyGoban extends Component {
     constructor(props) {
         super(props);
 
@@ -176,7 +176,7 @@ export class Goban extends Component {
     }
 }
 
-Goban.propTypes = {
+MyGoban.propTypes = {
     board: PropTypes.object.isRequired,
     onCoordinateClick: PropTypes.func,
     annotations: PropTypes.array,
