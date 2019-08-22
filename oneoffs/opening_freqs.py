@@ -1,3 +1,17 @@
+# Copyright 2019 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """opening_freqs.py -- Analyze SGFs for opening pattern frequency information
 
 Opening_freqs.py looks at subdirectories of SGFs and extracts joseki frequency
@@ -38,7 +52,6 @@ flags.DEFINE_integer("max_patterns", 5000,
 flags.DEFINE_integer("threads", 8, "Number of threads to use.")
 flags.DEFINE_float("sample_frac", 1.0,
                    "Fraction of sgfs in a directory to parse")
-flags.DEFINE_bool("update_summaries", False, "Scan no files; instead, update metadata on existing entries")
 
 
 def sha(sequence):
@@ -48,21 +61,33 @@ def sha(sequence):
 SCHEMA = """
 
 CREATE TABLE IF NOT EXISTS joseki (
-  seq text primary key,
+  id integer primary key,
+  seq text,
   length integer,
   num_tenukis integer
 );
 
 CREATE TABLE IF NOT EXISTS joseki_counts (
   id integer primary key,
-  seq text,
+  seq_id integer,
   hour text,
-  count integer,
   run text,
+  count integer,
   example_sgf text,
 
-  UNIQUE(seq, hour)
-  FOREIGN KEY(seq) REFERENCES joseki(seq) ON DELETE CASCADE
+  UNIQUE(seq_id, hour, run),
+  FOREIGN KEY(seq_id) REFERENCES joseki(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS next_moves (
+  id integer primary key,
+  seq_id integer,         -- select distinct(next_move), sum(count) from next_moves where seq_id='...' and 
+  joseki_hour_id integer, -- select jc.hour, next_move, count from next_moves where seq='...' join on joseki_counts as jc where jc.id
+  next_move text,         -- e.g. 'B[jj];'
+  count integer,
+
+  FOREIGN KEY(seq_id) REFERENCES joseki(id) ON DELETE CASCADE,
+  FOREIGN KEY(joseki_hour_id) REFERENCES joseki_counts(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS game_counts_by_hour(
@@ -71,20 +96,17 @@ CREATE TABLE IF NOT EXISTS game_counts_by_hour(
   count integer
 );
 
-CREATE TABLE IF NOT EXISTS joseki_summary (
-  id integer primary key,
-  seq text,
-  run text,
-  next_moves text, -- format is e.g. "'B[qd];': 0.12, 'B[];': 0.54" etc.
-  count integer,
-
-  UNIQUE(seq,run)
-);
-
 CREATE INDEX IF NOT EXISTS seq_index on joseki (seq);
-CREATE INDEX IF NOT EXISTS seq_index on joseki_summary (seq);
-CREATE INDEX IF NOT EXISTS seq_run on joseki_summary (seq,run);
+CREATE INDEX IF NOT EXISTS nm_index on next_moves (seq_id);
+CREATE INDEX IF NOT EXISTS jc_index on next_moves (joseki_hour_id);
+CREATE INDEX IF NOT EXISTS jc_seq_index on joseki_counts (seq_id);
 """
+
+COMPACT_NEXT_MOVES_TABLE_QUERY="""
+DELETE FROM next_moves WHERE id IN (SELECT nm.id FROM next_moves AS nm JOIN joseki AS j ON nm.seq_id = j.id WHERE (j.seq || nm.next_
+move) NOT IN (SELECT seq FROM joseki));
+"""
+
 
 
 def namedtuple_factory(cursor, row):
@@ -130,11 +152,7 @@ def move_to_corner(move):
     return [corners, (color, (y, x))]
 
 
-def extract_corners(game_path):
-    '''
-    returns a Counter("sequence", count) of all sequences/subsequences in all corners
-    of a given game_path
-    '''
+def extract_from_game(game_path):
     with open(game_path) as sgf_file:
         game_data = sgf_file.read().encode('utf-8')
 
@@ -143,8 +161,19 @@ def extract_corners(game_path):
         _, moves = sgf_moves.get_setup_and_moves(g)
     except BaseException:
         print("bad file: ", game_path)
-        return Counter()
+        return Counter(), {}
 
+    return extract_corners(moves)
+
+
+def extract_corners(moves):
+    '''
+    Takes a list of moves ('color', (row,col)) (e.g. from sgfmill)
+    returns a tuple of sequence_counts, nextmove_counts:
+      sequence_counts: a Counter("sequence", count) of all sequences/subsequences in all corners
+                       of a given game_path
+      nextmove_counts: a dict of {"sequence": Counter} objects of the next moves of given sequences.
+    '''
     corner_trackers = [[], [], [], []]
     stop = []
 
@@ -166,6 +195,7 @@ def extract_corners(game_path):
     # so, canonicalize them
 
     sequence_counts = Counter()
+    next_moves = defaultdict(Counter)
     for c in corner_trackers:
         seq = ""
         canonical = None
@@ -178,12 +208,13 @@ def extract_corners(game_path):
                 canonical = False
             elif canonical is False:
                 x, y = y, x
-            seq += sgf_format((color, (18 - y, x)))
+            next_move = sgf_format((color, (18 - y, x)))
+            if seq:
+                next_moves[seq][next_move] += 1
+            seq += next_move
+            sequence_counts[seq] += 1
 
-            if idx > MIN_JOSEKI_LENGTH:
-                sequence_counts[seq] += 1
-
-    return sequence_counts
+    return sequence_counts, next_moves
 
 
 def sgf_format(move):
@@ -198,6 +229,7 @@ def analyze_dir(directory):
     e.g. /path/to/games/2019-07-01-00/
     """
     counts = Counter()
+    next_moves = defaultdict(Counter)
     example_sgfs = {}
 
     sgf_files = [os.path.join(directory, p)
@@ -209,26 +241,38 @@ def analyze_dir(directory):
     hr = os.path.basename(directory.rstrip('/'))
 
     for path in sgf_files[:amt]:
-        corners = extract_corners(path)
+        corners, seq_nexts = extract_from_game(path)
         counts.update(corners)
+        for seq, next_cts in seq_nexts.items():
+            next_moves[seq].update(next_cts)
         for seq in corners:
             example_sgfs[seq] = os.path.join(hr, os.path.basename(path))
 
     db = sqlite3.connect(FLAGS.db_path, check_same_thread=False)
     with db:
-        for c in counts.most_common(1000):
+        for seq, count in counts.most_common(1000):
             cur = db.cursor()
-            cur.execute(""" INSERT INTO joseki(seq, length, num_tenukis) VALUES(?, ?, ?)
-                 ON CONFLICT DO NOTHING """,
-                        (c[0], len(c[0].split(';')[:-1]), count_tenukis(c[0])))
+
+            s_id = cur.execute('select id from joseki where seq=?', (seq,)).fetchone()
+            if s_id:
+                s_id = s_id[0]
+            else:
+                cur.execute(""" INSERT INTO joseki(seq, length, num_tenukis) VALUES(?, ?, ?) """,
+                           (seq, len(seq.split(';')[:-1]), count_tenukis(seq)))
+                s_id = cur.lastrowid
+
             cur.execute("""
-                 INSERT INTO joseki_counts(seq, hour, count, run, example_sgf) VALUES (?, ?, ?, ?, ?) ON CONFLICT(seq,hour) DO UPDATE SET count=count + ?
+                 INSERT INTO joseki_counts(seq_id, hour, count, run, example_sgf) VALUES (?, ?, ?, ?, ?)
                  """,
-                        (c[0], hr, c[1], FLAGS.run_name, example_sgfs[c[0]], c[1]))
-            cur.execute("""
-                  INSERT INTO game_counts_by_hour(hour, count) VALUES (?, ?) ON CONFLICT DO NOTHING 
-                        """,
-                        (hr, c[1]))
+                        (s_id, hr, count, FLAGS.run_name, example_sgfs[seq]))
+            jc_id = cur.lastrowid
+
+            for n,ct in next_moves[seq].items():
+                cur.execute("""
+                     INSERT INTO next_moves(seq_id, joseki_hour_id, next_move, count) VALUES (?, ?, ?, ?)
+                     """,
+                            (s_id, jc_id, n, ct))
+
         db.commit()
     db.close()
 
@@ -240,58 +284,11 @@ def count_tenukis(seq):
     return (sum(1 for _ in re.finditer('(?=BB)', colors)) +
             sum(1 for _ in re.finditer('(?=WW)', colors)))
 
-def update_summaries():
-    db = sqlite3.connect(FLAGS.db_path)
-    #db.row_factory = namedtuple_factory
-
-    all_min_joseki = [j[0] for j in db.execute("""
-        select seq from joseki where length = ? order by seq""",
-                                               (MIN_JOSEKI_LENGTH+2,)).fetchall()]
-    next_moves = defaultdict(set)
-
-    while all_min_joseki:
-        j = all_min_joseki.pop()
-        p = j.split(';')[:-1]
-        last = p.pop()
-        if len(p) :
-            new_p = ';'.join(p) + ';'
-            next_moves[new_p].add(last)
-            all_min_joseki.append(new_p)
-
-    # We now have a dict of {prefix: {set_of_next_moves}}
-    # Todo, multithread this
-    for root, nexts in tqdm(next_moves.items()):
-        tots = dict(db.execute("""
-                 select run, sum(count) from joseki_counts where seq like (?) group by 1;
-                               """, (root + '%', )).fetchall())
-        if sum(tots.values()) < 10:
-            continue
-
-        # tots = {'v15': 12345, ...}
-        for run in tots:
-            root_next = {}
-            for move in nexts:
-                run_count = db.execute("""
-                     select sum(count) from joseki_counts where seq like (?) and run = ?;
-                                         """, (root + move + ';%', run)).fetchone()[0]
-                root_next[move] = (run_count or 0) / tots[run]
-            db.execute("""
-                      insert into joseki_summary(seq, run, next_moves, count) values (?, ?, ?, ?)
-                       """, (root, run, str(root_next), tots[run]))
-        db.commit()
-
-
 def main(_):
     """Entrypoint for absl.app"""
     db = sqlite3.connect(FLAGS.db_path)
     db.executescript(SCHEMA)
     db.close()
-
-    if FLAGS.update_summaries:
-        update_summaries()
-        return
-
-    1/0
 
     root = FLAGS.in_dir
     dirs = [os.path.join(root, d) for d in os.listdir(root)

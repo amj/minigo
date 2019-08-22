@@ -1,6 +1,3 @@
-import React from 'react';
-import godash from 'godash';
-import {Goban} from 'react-go-board';
 /*
 # Copyright 2019 Google LLC
 #
@@ -16,6 +13,16 @@ import {Goban} from 'react-go-board';
 # See the License for the specific language governing permissions and
 # limitations under the License.
 */
+
+import React from 'react';
+import axios from 'axios';
+import colormap from 'colormap';
+
+import {range, flatten} from 'lodash';
+import go from 'godash';
+import godash from 'godash';
+import {Goban} from './goban';
+
 import Button from '@material-ui/core/Button';
 import ToggleButtonGroup from '@material-ui/lab/ToggleButtonGroup';
 import ToggleButton from '@material-ui/lab/ToggleButton';
@@ -25,11 +32,12 @@ import AppBar from '@material-ui/core/AppBar';
 import Toolbar from '@material-ui/core/Toolbar';
 import Typography from '@material-ui/core/Typography';
 import {styled} from '@material-ui/styles';
-import axios from 'axios';
+
 import Chart from 'react-google-charts';
-import colormap from 'colormap';
+import KeyboardEventHandler from 'react-keyboard-event-handler';
 
 import './App.css';
+
 
 const MyButton = styled(Button)({
     margin: 10,
@@ -39,8 +47,17 @@ const colors = colormap({
   colormap: 'copper',
   nshades: 50,
   format: 'rgbaString',
-  alpha: [0.05,1]
+  alpha: [0.01,1]
 });
+
+
+// Lol "const"
+const defaultHighlights = {}
+defaultHighlights[colors[0]] = flatten(range(10).map(idx => {
+        return range(10-idx).map(jdx => {
+          return {x: 18-idx, y:9-jdx };
+        });
+      }));
 
 class DefaultDict {
   constructor(defaultInit) {
@@ -62,12 +79,12 @@ class Joseki extends React.Component {
           board: new godash.Board(),
           nextColor: godash.BLACK,
           passNext: true,  // was 'pass' one of the next moves played here.
-          other_highlights: null, // if so, what moves were considered then?
+          other_highlights: defaultHighlights, // if so, what moves were considered then?
+          highlights: defaultHighlights,
           search_enabled: false,
           tableData: null,
-          highlights: null,
           count: null,
-          run: 'v17',
+          run: null,
         };
 
         this.resetBoard = this.resetBoard.bind(this);
@@ -75,36 +92,90 @@ class Joseki extends React.Component {
         this.search = this.search.bind(this);
         this.pass = this.pass.bind(this);
         this.handleRunChange = this.handleRunChange.bind(this);
+        this.prevMove = this.prevMove.bind(this);
+        this.handleKeyDown = this.handleKeyDown.bind(this);
+
+}
+
+  handleKeyDown(key, e) {
+    if (key === 'left') {
+      this.prevMove(e);
+    }
+  }
+
+  resetBoard() {
+    this.setState({
+      board: new godash.Board(),
+      nextColor: godash.BLACK,
+      passNext: true,
+      moves: "",
+      highlights: defaultHighlights,
+      other_highlights: defaultHighlights,
+      tableData: null,
+      search_enabled: false,
+      run: null,
+    });
+  }
+
+  searchEnabled(moves) {
+      return (moves.match(/;/g)||[]).length >= 3 ? true : false;
+  }
+
+  prevMove(event) {
+      var num_moves = (this.state.moves.match(/;/g)||[]).length;
+      if (num_moves <= 1){
+        return;
+      }
+      var new_moves = this.state.moves.split(';')
+      new_moves.pop()
+      var m = new_moves.pop()
+      new_moves = new_moves.join(';') + ';'
+      this.setState({
+        board: godash.removeStone(this.state.board, godash.sgfPointToCoordinate(m.slice(2,4))),
+        nextColor: (this.state.nextColor === godash.BLACK ? godash.WHITE : godash.BLACK),
+        moves: new_moves,
+        search_enabled: this.searchEnabled(new_moves)
+      }, () => { 
+        this.updateHeatmap();
+        if(num_moves >= 1) {
+          this.search();
+        }
+      });
+
   }
 
   handleRunChange(event, newRun) {
     this.setState({
       run: newRun,
+    }, () => {
+      console.log('run changed to', this.state.run);
+      this.updateHeatmap();
     });
-
-    this.updateHeatmap("");
   }
 
   coordinateClicked(coordinate) {
       var m = this.state.nextColor === godash.BLACK ? "B[" : "W[";
       m = m + godash.coordinateToSgfPoint(coordinate) + "];";
-      var num_moves = (this.state.moves.match(/;/g)||[]).length - 1;
+      var num_moves = (this.state.moves.match(/;/g)||[]).length;
 
       this.setState({
           board: godash.addMove(this.state.board, coordinate, this.state.nextColor),
           nextColor: (this.state.nextColor === godash.BLACK ? godash.WHITE : godash.BLACK),
           moves: this.state.moves + m,
           highlights: null,
-          search_enabled: num_moves >= 4 ? true : false
+          search_enabled: this.searchEnabled(this.state.moves+m)
+      }, () => {
+        this.updateHeatmap();
+        if(num_moves >= 1) {
+          this.search();
+        }
       });
-
-      this.updateHeatmap(m);
   }
 
-  updateHeatmap(m) {
+  updateHeatmap() {
       axios.post('/nexts', {
         params: {
-          prefix: this.state.moves + m,
+          prefix: this.state.moves,
           run: this.state.run
         }
       }).then(response => {
@@ -121,6 +192,7 @@ class Joseki extends React.Component {
             }
             highlights[colors[Math.floor(freq * 48)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
         }
+        console.log(highlights);
         this.setState({
             highlights: highlights,
             other_highlights: other_highlights,
@@ -128,18 +200,6 @@ class Joseki extends React.Component {
             count: response.data.count
         });
       });
-  }
-
-  resetBoard() {
-    this.setState({
-      board: new godash.Board(),
-      nextColor: godash.BLACK,
-      passNext: true,
-      moves: "",
-      highlights: null,
-      other_highlights: null,
-      search_enabled: false,
-    });
   }
 
   pass() {
@@ -167,6 +227,12 @@ class Joseki extends React.Component {
   render() {
     return (
       <div className="App">
+        <KeyboardEventHandler
+            handleKeys={['left', 'right']}
+                onKeyEvent={(key, e) => {
+                  this.handleKeyDown(key, e);
+                }} />
+
         <AppBar position="static">
           <Toolbar>
                 <h3 className="{classes.title}">
@@ -177,7 +243,7 @@ class Joseki extends React.Component {
         <div style={{ marginTop:20 }}> </div>
         <Container>
               <Typography variant="h4" align='left' gutterBottom>
-              {this.state.moves ? this.state.moves : "Click to explore joseki"}
+              {this.state.moves ? this.state.moves : "The active sequence will appear here"}
               </Typography>
               <Typography variant="h5" align='left' gutterBottom>
               { this.state.moves ?
@@ -192,13 +258,14 @@ class Joseki extends React.Component {
                     board={this.state.board}
                     onCoordinateClick={this.coordinateClicked}
                     highlights={this.state.highlights}
+                    view_window={{x:[8,19], y:[0,10]}} 
                 />
                 <MyButton variant="contained" onClick={this.search}
                           color="primary" disabled={!this.state.search_enabled}>Search</MyButton>
                 <MyButton variant="contained" onClick={this.pass}
-                          color={this.state.passNext ? "secondary" : "default"}>Pass</MyButton>
+                          color={this.state.passNext ? "secondary" : "default"}>Tenuki</MyButton>
                 <MyButton variant="contained" onClick={this.resetBoard}>Clear</MyButton>
-            <ToggleButtonGroup variant="contained" exclusive value={this.state.run} onChange={this.handleRunChange}>
+            <ToggleButtonGroup variant="contained" exclusive value={this.state.run} onChange={this.handleRunChange} size='small'>
                 <ToggleButton variant="contained" value="v15">v15</ToggleButton>
                 <ToggleButton variant="contained" value="v16">v16</ToggleButton>
                 <ToggleButton variant="contained" value="v17">v17</ToggleButton>
@@ -206,12 +273,22 @@ class Joseki extends React.Component {
             </Grid>
 
             <Grid item xs={6}>
+            {this.state.tableData === null ? (<div >
+              <Typography variant="h5" align='left' gutterBottom>
+              <p> Explore Minigo's most common opening moves during its training by clicking on the board to the left. </p>
+              </Typography>
+              <Typography variant="subtitle1" align='left' gutterBottom>
+              <p> For sequences longer than two moves, a frequency graph will appear here showing the openings' popularity over time. </p>
+              <p> Joseki's beginning with black or white are tabulated independently, as are transpositions.</p>
+              <p> If tenuki was a frequently played option, 'tenuki' button will be enabled to toggle the next color to be played. </p>
+              </Typography>
+              </div>) :
                 <Chart
-                    loader={ <p> Chart goes here </p> }
+                    loader={ <p> Chart loading... </p> }
                     chartType="ScatterChart"
                     data={this.state.tableData}
                     options = {{
-                              title: `How many times sequences was seen over training`,
+                              title: `How frequently this sequence was seen over training`,
                               hAxis: {title: '% of training',
                                       viewWindow: {min: 0, max: 100}},
                               vAxis: {title: 'Frequency', logScale: true},
@@ -222,6 +299,7 @@ class Joseki extends React.Component {
                     height={'600px'}
                     width={'800px'}
                 />
+            }
             </Grid>
           </Grid>
         </Container>

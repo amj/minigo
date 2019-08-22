@@ -6,6 +6,7 @@
   "dependencies": {
     "@material-ui/core": "^4.3.2",
     "@material-ui/lab": "^4.0.0-alpha.23",
+    "arrow-keys-react": "^1.0.6",
     "axios": "^0.19.0",
     "colormap": "^2.3.1",
     "material-ui": "latest",
@@ -14,7 +15,9 @@
     "react-dom": "^16.9.0",
     "react-go-board": "^0.6.3",
     "react-google-charts": "^3.0.14",
-    "react-scripts": "3.1.1"
+    "react-keyboard-event-handler": "^1.5.1",
+    "react-scripts": "3.1.1",
+    "serve": "^11.1.0"
   },
   "scripts": {
     "start": "react-scripts start",
