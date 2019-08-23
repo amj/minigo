@@ -43,7 +43,7 @@ log.setLevel(logging.WARNING)
 app = Flask(__name__, static_url_path="", static_folder="./")
 
 MIN_PATTERN_LENGTH = 3
-DATABASE = '/data/sgf/new_joseki.db.bak'
+DATABASE = '/data/sgf/winrate_joseki.db'
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -74,10 +74,8 @@ def nexts():
     d = json.loads(flask.request.data.decode('utf-8'))
     prefix = d['params']['prefix']
     run = d['params']['run']
-    print(prefix, run)
 
     db = get_db()
-    db.set_trace_callback(print)
 
     res = {'count': 0, 'next_moves': {}}
 
@@ -138,11 +136,11 @@ def games():
     prefix = d['params']['sgf']
     sort_hour = d['params']['sort']
     run = d['params']['run']
-    page = d['params']['page'] -1
-
+    # "page" is 1-indexed, so subtract 1 to get the proper OFFSET.
+    page = d['params']['page'] - 1 
     db = get_db()
-    db.set_trace_callback(print)
 
+    #TODO this should not be optimized away.
     assert(sort_hour.lower() == 'desc' or sort_hour.lower() == 'asc')
 
     s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
@@ -150,7 +148,7 @@ def games():
         return flask.Response(json.dumps({'rows': []}), mimetype='text/json')
     s_id = s_id[0]
 
-    q = """select example_sgf, hour, run from joseki_counts
+    q = """select example_sgf, hour, run, b_wins*1.0/count from joseki_counts
         where seq_id=? {} order by hour {} limit 30 offset ?""".format(
             "and run = ?" if run else "", sort_hour)
 
@@ -158,7 +156,8 @@ def games():
         rows = db.execute(q, (s_id, run, page * 30)).fetchall()
     else:
         rows = db.execute(q, (s_id, page * 30)).fetchall()
-    res = [ {'game': os.path.basename(r[0]), 'hour': r[1], 'run': r[2]} for r in rows]
+    res = [ {'game': os.path.basename(r[0]), 'hour': r[1],
+             'run': r[2], 'winrate': r[3]} for r in rows]
 
     return flask.Response(json.dumps({'rows': res}), mimetype='text/json')
 
@@ -168,9 +167,6 @@ def search():
     d = json.loads(flask.request.data.decode('utf-8'))
     print(d)
     query = d['params']['sgf']
-
-    print(query)
-    print('querying')
 
     ts = lambda hr: int(dt.datetime.strptime(hr, "%Y-%m-%d-%H").timestamp())
     ranges = ofe.run_time_ranges(get_db())
@@ -185,7 +181,6 @@ def search():
 
     data = []
     sequence_counts = query_db(query)
-    print(len(sequence_counts))
 
     rows = collections.defaultdict(lambda: [0 for i in range(len(runs))])
 

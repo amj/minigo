@@ -20,8 +20,7 @@ import colormap from 'colormap';
 
 import {range, flatten} from 'lodash';
 import godash from 'godash';
-//import {Goban} from 'godash';
-import {MyGoban} from './goban';
+import {Goban} from 'react-go-board';
 
 import Button from '@material-ui/core/Button';
 import ToggleButtonGroup from '@material-ui/lab/ToggleButtonGroup';
@@ -57,7 +56,7 @@ const colors = colormap({
   colormap: 'copper',
   nshades: 50,
   format: 'rgbaString',
-  alpha: [0.01,1]
+  alpha: [0.02,1]
 });
 
 
@@ -115,7 +114,7 @@ class Joseki extends React.Component {
         this.handleNextButtonClick = this.handleNextButtonClick.bind(this);
         this.handlePrevButtonClick = this.handlePrevButtonClick.bind(this);
 
-        this.updateHeatmap();
+        this.updateHeatmap(); // update our heatmap with the empty board.
 }
 
   handleKeyDown(key, e) {
@@ -189,9 +188,6 @@ class Joseki extends React.Component {
       this.updateHeatmap();
       if (this.state.tableData) {
         this.findGames();
-        this.setState({
-          tablePage: 1
-        });
       }
     });
   }
@@ -235,7 +231,6 @@ class Joseki extends React.Component {
             }
             highlights[colors[Math.floor(freq * 48)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
         }
-        console.log(highlights);
         this.setState({
             highlights: highlights,
             other_highlights: other_highlights,
@@ -317,17 +312,18 @@ class Joseki extends React.Component {
               </Typography>
 
           <Grid container justify="flex-start" spacing={3}>
-            <Grid item xs={6}>
-                <MyGoban
+            <Grid item md={5} xs={12}>
+                <Goban
                     board={this.state.board}
                     onCoordinateClick={this.coordinateClicked}
                     highlights={this.state.highlights}
                     topLeft={topLeft}
                     bottomRight={bottomRight}
-                    view_window={{x:[8,19], y:[0,10]}}
                 />
-                <MyButton variant="contained" onClick={this.findGames}
-                          color="primary" disabled={!this.state.search_enabled}>Search Games</MyButton>
+                <MyButton variant="contained" onClick={() => {
+                  this.setState({ tablePage: 1 },
+                      () => { this.findGames(); });
+                }} color="primary" disabled={!this.state.search_enabled}>Search</MyButton>
                 <MyButton variant="contained" onClick={this.tenuki}
                           color={this.state.passNext ? "secondary" : "default"}>Tenuki</MyButton>
                 <MyButton variant="contained" onClick={this.resetBoard}>Clear</MyButton>
@@ -341,7 +337,7 @@ class Joseki extends React.Component {
             }
             </Grid>
 
-            <Grid item xs={6}>
+            <Grid item md={7} xs={12} >
             {this.state.chartData === null ? (<div >
               <Typography variant="h5" align='left' gutterBottom>
               <p> Explore Minigo's most common opening moves during its training by clicking on the board to the left. </p>
@@ -350,7 +346,7 @@ class Joseki extends React.Component {
               <p> For sequences longer than two moves, a frequency graph will appear here showing the openings' popularity over time. </p>
               <p> Joseki's beginning with black or white are tabulated independently, as are transpositions.</p>
               <p> If tenuki was a frequently played option, 'tenuki' button will be enabled to toggle the next color to be played. </p>
-              <p> "Search Games" will find selfplay games featuring the current pattern. </p>
+              <p> "Search" will find hourly details and example games featuring the current pattern. </p>
               </Typography>
               </div>) :
                 <Chart
@@ -362,6 +358,7 @@ class Joseki extends React.Component {
                               hAxis: {title: '% of training',
                                       viewWindow: {min: 0, max: 100}},
                               vAxis: {title: 'Frequency', logScale: true},
+                              chartArea: {'width': '80%', 'height': '80%'},
                               legend: { position : 'bottom'},
                               theme: 'material',
                               pointSize: 3,
@@ -373,25 +370,27 @@ class Joseki extends React.Component {
             <Grid item xs={12}>
             {this.state.tableData === null ? <div> </div> : 
               <Paper>
-                <Typography variant="h5" align="left" style={{ padding:20 }} >
-                  Example Games
+                <Typography id="tableTitle" variant="h5" align="left" style={{ padding:20 }} >
+                  Details per hour and example games
 
-                  <IconButton onClick={this.handlePrevButtonClick} disabled={this.state.tablePage === 1} aria-label="previous page">
+                  <IconButton style={{marginLeft:20, paddingRight:5}} onClick={this.handlePrevButtonClick} disabled={this.state.tablePage === 1} aria-label="previous page">
                   <KeyboardArrowLeft/> </IconButton>
                   {this.state.tablePage}
-                  <IconButton onClick={this.handleNextButtonClick} aria-label="next page">
+                  <IconButton style={{marginRight:20, paddingLeft: 5}}onClick={this.handleNextButtonClick} aria-label="next page">
                   <KeyboardArrowRight/> </IconButton>
                 </Typography>
 
-                <Table>
+                <Table size="small" aria-labelledby="tableTitle">
                   <TableHead>
                     <TableRow>
-                      <TableCell> Game </TableCell>
+                      <TableCell> Link </TableCell>
                       <TableCell>
                         <TableSortLabel
+                            active={true}
                             direction={this.state.tableHourSort}
                             onClick={this.toggleHourSort} /> Hour </TableCell>
                       <TableCell> Run </TableCell>
+                      <TableCell> Winrate </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -403,6 +402,12 @@ class Joseki extends React.Component {
                         </TableCell>
                         <TableCell align="left"> {row.hour} </TableCell>
                         <TableCell align="left"> {row.run} </TableCell>
+                        <TableCell align="left"> 
+                        <div style={{backgroundColor: "#ccc", width:'100px', position:'relative'}}> 
+                          <div style={{borderRight: '2px dashed #eee',
+                                        width:'50%', position: 'absolute'}}> &nbsp; </div>
+                          <div style={{backgroundColor: "#111", width:(row.winrate*100) + "%"}}> &nbsp; </div>
+                        </div> </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
