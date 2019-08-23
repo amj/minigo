@@ -40,10 +40,10 @@ FLAGS = flags.FLAGS
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.WARNING)
 
-app = Flask(__name__, static_url_path="", static_folder="./")
+# Location of npm build
+app = Flask(__name__, static_url_path="", static_folder="./joseki/build")
 
-MIN_PATTERN_LENGTH = 3
-DATABASE = '/data/sgf/winrate_joseki.db'
+DATABASE = 'joseki.db' # relative to joseki_query.py
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -67,7 +67,7 @@ def query_db(seq):
 
 @app.route("/")
 def index():
-    return app.send_static_file("joseki_search.html")
+    return app.send_static_file("index.html")
 
 @app.route("/nexts", methods=["POST"])
 def nexts():
