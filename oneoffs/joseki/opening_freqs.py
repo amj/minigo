@@ -34,7 +34,9 @@ import sqlite3
 import random
 import multiprocessing as mp
 from collections import Counter, namedtuple, defaultdict
+import datetime as dt
 import re
+import functools
 import os
 import coords
 
@@ -108,6 +110,32 @@ DELETE FROM next_moves WHERE id IN (SELECT nm.id FROM next_moves AS nm JOIN jose
 move) NOT IN (SELECT seq FROM joseki));
 """
 
+
+def run_time_ranges(db):
+    ts = lambda hr: int(dt.datetime.strptime(hr, "%Y-%m-%d-%H").timestamp())
+    runs = {r[0]: (ts(r[1]), ts(r[2])) for r in db.execute('''
+        select run, min(hour), max(hour) from joseki_counts group by 1;
+        ''').fetchall()}
+    return runs
+
+
+def build_run_time_transformers(ranges, buckets=250):
+    """ Build a dict of functions to transform from a timestamp into a relative
+    offset.  E.g.
+    input: {'v17': (1234567890, 1235567879) ... }
+    output: {'v17': lambda t: (t - min) * (1/max) ... }
+    """
+
+    funcs = {}
+    def f(t, min_, max_):
+        #return "%0.2f" % ((t-min_) * (1/(max_-min_)))
+        key = (t-min_) * (1/(max_-min_))
+        return "%0.3f" % (int(buckets*key) / (buckets / 100.0))
+
+    for run, range_ in ranges.items():
+        funcs[run] = functools.partial(f, min_=range_[0], max_=range_[1])
+
+    return funcs
 
 
 def namedtuple_factory(cursor, row):

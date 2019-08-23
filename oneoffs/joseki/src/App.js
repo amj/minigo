@@ -37,7 +37,9 @@ import TableHead from '@material-ui/core/TableHead';
 import TableSortLabel from '@material-ui/core/TableSortLabel';
 import TableRow from '@material-ui/core/TableRow';
 import Paper from '@material-ui/core/Paper';
-import {styled} from '@material-ui/styles';
+import {styled, ThemeProvider} from '@material-ui/styles';
+import {createMuiTheme} from '@material-ui/core/styles';
+import red from '@material-ui/core/colors/red';
 import IconButton from '@material-ui/core/IconButton';
 import KeyboardArrowLeft from '@material-ui/icons/KeyboardArrowLeft';
 import KeyboardArrowRight from '@material-ui/icons/KeyboardArrowRight';
@@ -48,15 +50,23 @@ import KeyboardEventHandler from 'react-keyboard-event-handler';
 import './App.css';
 
 
+const NUM_COLORS = 48
 const MyButton = styled(Button)({
     margin: 10,
 });
 
 const colors = colormap({
   colormap: 'copper',
-  nshades: 50,
+  nshades: NUM_COLORS+1,
   format: 'rgbaString',
   alpha: [0.02,1]
+});
+
+const theme = createMuiTheme({
+  palette: {
+    primary: { main: '#1976d2' },
+    secondary: { main: '#D32F2F' }
+  }
 });
 
 
@@ -224,13 +234,13 @@ class Joseki extends React.Component {
         var highlights = new DefaultDict(Array);
         var other_highlights = new DefaultDict(Array);
         var passFound = false;
-        for (const [coord,freq] of Object.entries(response.data.next_moves)) { 
+        for (const [coord,freq] of Object.entries(response.data.next_moves)) {
             if (coord[0] === next) {
               passFound = true;
-              other_highlights[colors[Math.floor(freq * 48)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
+              other_highlights[colors[Math.floor(freq * NUM_COLORS)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
               continue;
             }
-            highlights[colors[Math.floor(freq * 48)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
+            highlights[colors[Math.floor(freq * NUM_COLORS)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
         }
         var num_moves = (this.state.moves.match(/;/g)||[]).length;
         if (response.data.count === 0 && num_moves > 1) {
@@ -296,6 +306,7 @@ class Joseki extends React.Component {
   render() {
     var num_moves = (this.state.moves.match(/;/g)||[]).length;
     return (
+  <ThemeProvider theme={theme}>
       <div className="App">
         <KeyboardEventHandler
             handleKeys={['left', 'right']}
@@ -365,7 +376,7 @@ class Joseki extends React.Component {
                     chartType="ScatterChart"
                     data={this.state.chartData}
                     options = {{
-                              title: `How frequently this sequence was seen over training`,
+                              title: `How frequently this sequence occurred, per hour, over training`,
                               hAxis: {title: '% of training',
                                       viewWindow: {min: 0, max: 100}},
                               vAxis: {title: 'Frequency', logScale: true},
@@ -379,12 +390,15 @@ class Joseki extends React.Component {
             }
             </Grid>
             <Grid item xs={12}>
-            {this.state.tableData === null ? <div> </div> : 
+            {this.state.tableData === null ? <div> </div> :
               <Paper>
                 <Typography id="tableTitle" variant="h5" component="div" align="left" style={{ padding:20 }} >
                   Details per hour and example games
 
-                  <IconButton style={{marginLeft:30, marginRight:15}} onClick={this.handlePrevButtonClick} disabled={this.state.tablePage === 1} aria-label="previous page">
+                  <IconButton style={{marginLeft:30, marginRight:15}}
+                              onClick={this.handlePrevButtonClick}
+                              disabled={this.state.tablePage === 1}
+                              aria-label="previous page">
                   <KeyboardArrowLeft/> </IconButton>
                   {this.state.tablePage}
                   <IconButton style={{marginRight:30, marginLeft: 15}}onClick={this.handleNextButtonClick} aria-label="next page">
@@ -413,10 +427,11 @@ class Joseki extends React.Component {
                         </TableCell>
                         <TableCell align="left"> {row.hour} </TableCell>
                         <TableCell align="left"> {row.run} </TableCell>
-                        <TableCell align="left"> 
+                        <TableCell align="left">
                         <div style={{backgroundColor: "#ccc", width:'100%', position:'relative'}}>
                           <div style={{borderRight: '2px dashed #eee',
-                                        width:'50%', position: 'absolute'}}> &nbsp; </div>
+                                       width:'50%',
+                                       position: 'absolute'}}> &nbsp; </div>
                           <div style={{backgroundColor: "#111", width:(row.winrate*100) + "%"}}> &nbsp; </div>
                         </div> </TableCell>
                       </TableRow>
@@ -429,6 +444,7 @@ class Joseki extends React.Component {
           </Grid>
         </Container>
       </div>
+  </ThemeProvider>
     );
   }
 }

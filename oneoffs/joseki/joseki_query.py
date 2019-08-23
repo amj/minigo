@@ -21,29 +21,22 @@ import sqlite3
 import collections
 import datetime as dt
 
-from absl import flags
 from flask import Flask, g
 from timeit import default_timer as timer
 
 import os
 import flask
 
-import oneoffs.opening_freqs_export as ofe
-
-flags.DEFINE_integer("port", 5001, "Port to listen on.")
-
-flags.DEFINE_string("host", "127.0.0.1", "The hostname or IP to listen on.")
-
-FLAGS = flags.FLAGS
+import oneoffs.joseki.opening_freqs as openings
 
 # Suppress Flask's info logging.
 log = logging.getLogger("werkzeug")
 log.setLevel(logging.WARNING)
 
-# Location of npm build
-app = Flask(__name__, static_url_path="", static_folder="./joseki/build")
+# static_folder is location of npm build
+app = Flask(__name__, static_url_path="", static_folder="./build")
 
-DATABASE = 'joseki.db' # relative to joseki_query.py
+DATABASE = '/data/sgf/wr_joseki_3000.db' # relative to joseki_query.py
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -109,7 +102,7 @@ def nexts():
                                (s_id, run)).fetchone()[0]
 
     if not nexts:
-        print("Some kind of error, post params:", d['params'])
+        print("No next moves found, post params:", d['params'])
         return flask.Response(json.dumps(res), mimetype='text/json')
 
     next_moves = {}
@@ -140,8 +133,9 @@ def games():
     page = d['params']['page'] - 1 
     db = get_db()
 
-    #TODO this should not be optimized away.
-    assert(sort_hour.lower() == 'desc' or sort_hour.lower() == 'asc')
+    if (sort_hour.lower() != 'desc' and sort_hour.lower() != 'asc'):
+        print("Invalid input for sort_hour param: ", sort_hour)
+        return flask.Response(json.dumps({'rows': []}), mimetype='text/json')
 
     s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
     if not s_id:
@@ -169,8 +163,8 @@ def search():
     query = d['params']['sgf']
 
     ts = lambda hr: int(dt.datetime.strptime(hr, "%Y-%m-%d-%H").timestamp())
-    ranges = ofe.run_time_ranges(get_db())
-    interps = ofe.build_run_time_transformers(ranges)
+    ranges = openings.run_time_ranges(get_db())
+    interps = openings.build_run_time_transformers(ranges)
 
     runs = sorted(ranges.keys())
 
@@ -194,11 +188,3 @@ def search():
     obj = {'cols': cols, "rows": row_data, "sequence": query}
     data.append(obj)
     return flask.Response(json.dumps(obj), mimetype='text/json')
-
-
-def main(argv):
-  if len(argv) > 1:
-    raise app.UsageError('Too many command-line arguments.')
-
-if __name__ == '__main__':
-  absl.app.run(main)
