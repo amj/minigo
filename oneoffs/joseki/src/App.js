@@ -100,6 +100,7 @@ class Joseki extends React.Component {
           run: null,
           tableHourSort: 'desc',
           tablePage: 1,
+          doneMessage: false,
         };
 
         this.resetBoard = this.resetBoard.bind(this);
@@ -149,6 +150,7 @@ class Joseki extends React.Component {
       tablePage: 1,
       search_enabled: false,
       run: null,
+      doneMessage: false,
     }, () => {
       this.updateHeatmap();
     });
@@ -219,7 +221,6 @@ class Joseki extends React.Component {
         }
       }).then(response => {
         var next = this.state.nextColor === godash.BLACK ? 'W' : 'B';
-        // make a dumb defaultdict
         var highlights = new DefaultDict(Array);
         var other_highlights = new DefaultDict(Array);
         var passFound = false;
@@ -231,12 +232,19 @@ class Joseki extends React.Component {
             }
             highlights[colors[Math.floor(freq * 48)]].push(godash.sgfPointToCoordinate(coord.slice(2,4)))
         }
-        this.setState({
-            highlights: highlights,
-            other_highlights: other_highlights,
-            passNext: passFound,
-            count: response.data.count
-        });
+        var num_moves = (this.state.moves.match(/;/g)||[]).length;
+        if (response.data.count === 0 && num_moves > 1) {
+            this.setState({doneMessage: true});
+            this.prevMove();
+            this.findGames();
+        } else {
+          this.setState({
+              highlights: highlights,
+              other_highlights: other_highlights,
+              passNext: passFound,
+              count: response.data.count
+          });
+        }
       });
   }
 
@@ -305,10 +313,12 @@ class Joseki extends React.Component {
         <div style={{ marginTop:20 }}> </div>
         <Container>
               <Typography variant="h5" align='left' gutterBottom>
+              <p>
               { this.state.moves ?
-                <p>Seen: {this.state.count} times </p>
-                    : <p>&nbsp;</p>
+                <span> Seen: {this.state.count} times </span> : <span>&nbsp;</span>
               }
+              { this.state.doneMessage === true ? <span> (no further data) </span> : <div> </div> }
+              </p>
               </Typography>
 
           <Grid container justify="flex-start" spacing={3}>
@@ -404,7 +414,7 @@ class Joseki extends React.Component {
                         <TableCell align="left"> {row.hour} </TableCell>
                         <TableCell align="left"> {row.run} </TableCell>
                         <TableCell align="left"> 
-                        <div style={{backgroundColor: "#ccc", width:'100px', position:'relative'}}> 
+                        <div style={{backgroundColor: "#ccc", width:'100%', position:'relative'}}>
                           <div style={{borderRight: '2px dashed #eee',
                                         width:'50%', position: 'absolute'}}> &nbsp; </div>
                           <div style={{backgroundColor: "#111", width:(row.winrate*100) + "%"}}> &nbsp; </div>
