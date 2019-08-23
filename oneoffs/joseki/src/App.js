@@ -319,6 +319,7 @@ class Joseki extends React.Component {
                     highlights={this.state.highlights}
                     topLeft={topLeft}
                     bottomRight={bottomRight}
+	    	    options= {{stonePadding: 2}}
                 />
                 <MyButton variant="contained" onClick={() => {
                   this.setState({ tablePage: 1 },
