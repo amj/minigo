@@ -370,13 +370,13 @@ class Joseki extends React.Component {
             <Grid item xs={12}>
             {this.state.tableData === null ? <div> </div> : 
               <Paper>
-                <Typography id="tableTitle" variant="h5" align="left" style={{ padding:20 }} >
+                <Typography id="tableTitle" variant="h5" component="div" align="left" style={{ padding:20 }} >
                   Details per hour and example games
 
-                  <IconButton style={{marginLeft:20, paddingRight:5}} onClick={this.handlePrevButtonClick} disabled={this.state.tablePage === 1} aria-label="previous page">
+                  <IconButton style={{marginLeft:30, marginRight:15}} onClick={this.handlePrevButtonClick} disabled={this.state.tablePage === 1} aria-label="previous page">
                   <KeyboardArrowLeft/> </IconButton>
                   {this.state.tablePage}
-                  <IconButton style={{marginRight:20, paddingLeft: 5}}onClick={this.handleNextButtonClick} aria-label="next page">
+                  <IconButton style={{marginRight:30, marginLeft: 15}}onClick={this.handleNextButtonClick} aria-label="next page">
                   <KeyboardArrowRight/> </IconButton>
                 </Typography>
 
@@ -398,7 +398,7 @@ class Joseki extends React.Component {
                       <TableRow key={row.game}>
                         <TableCell scope="row">
                           <a href={"http://cloudygo.com/" + row.run + "-19x19/joseki/full/" + row.game}
-                            target="_blank">{row.game}</a>
+                            target="_blank" rel="noopener noreferrer">{row.game}</a>
                         </TableCell>
                         <TableCell align="left"> {row.hour} </TableCell>
                         <TableCell align="left"> {row.run} </TableCell>
