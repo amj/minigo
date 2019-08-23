@@ -47,9 +47,9 @@ flags.DEFINE_string("in_dir", None, "sgfs here are parsed.")
 flags.DEFINE_string("db_path", 'joseki.db', "Path to josekidb")
 flags.DEFINE_string("run_name", '',
                     "If the games should be associated with a 'run' key (e.g., 'v17')")
-flags.DEFINE_integer("max_patterns", 5000,
+flags.DEFINE_integer("most_common", 3000,
                      "Number of most-common-joseki to save per hour")
-flags.DEFINE_integer("threads", 8, "Number of threads to use.")
+flags.DEFINE_integer("threads", 12, "Number of threads to use.")
 flags.DEFINE_float("sample_frac", 1.0,
                    "Fraction of sgfs in a directory to parse")
 
@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS joseki_counts (
   hour text,
   run text,
   count integer,
+  b_wins integer,
   example_sgf text,
 
   UNIQUE(seq_id, hour, run),
@@ -153,6 +154,9 @@ def move_to_corner(move):
 
 
 def extract_from_game(game_path):
+    """
+    In addition to the corner information returned, we also add the winner
+    """
     with open(game_path) as sgf_file:
         game_data = sgf_file.read().encode('utf-8')
 
@@ -163,7 +167,7 @@ def extract_from_game(game_path):
         print("bad file: ", game_path)
         return Counter(), {}
 
-    return extract_corners(moves)
+    return (extract_corners(moves), 1 if g.get_winner() == 'b' else 0)
 
 
 def extract_corners(moves):
@@ -231,6 +235,7 @@ def analyze_dir(directory):
     counts = Counter()
     next_moves = defaultdict(Counter)
     example_sgfs = {}
+    b_wins = Counter()
 
     sgf_files = [os.path.join(directory, p)
                  for p in os.listdir(directory) if p.endswith('.sgf')]
@@ -241,16 +246,18 @@ def analyze_dir(directory):
     hr = os.path.basename(directory.rstrip('/'))
 
     for path in sgf_files[:amt]:
-        corners, seq_nexts = extract_from_game(path)
+        (corners, seq_nexts), b_win = extract_from_game(path)
         counts.update(corners)
         for seq, next_cts in seq_nexts.items():
             next_moves[seq].update(next_cts)
         for seq in corners:
-            example_sgfs[seq] = os.path.join(hr, os.path.basename(path))
+            b_wins[seq] += b_win
+            if not seq in example_sgfs:
+                example_sgfs[seq] = os.path.join(hr, os.path.basename(path))
 
     db = sqlite3.connect(FLAGS.db_path, check_same_thread=False)
     with db:
-        for seq, count in counts.most_common(1000):
+        for seq, count in counts.most_common(FLAGS.most_common):
             cur = db.cursor()
 
             s_id = cur.execute('select id from joseki where seq=?', (seq,)).fetchone()
@@ -262,9 +269,9 @@ def analyze_dir(directory):
                 s_id = cur.lastrowid
 
             cur.execute("""
-                 INSERT INTO joseki_counts(seq_id, hour, count, run, example_sgf) VALUES (?, ?, ?, ?, ?)
+                 INSERT INTO joseki_counts(seq_id, hour, count, run, b_wins, example_sgf) VALUES (?, ?, ?, ?, ?, ?)
                  """,
-                        (s_id, hr, count, FLAGS.run_name, example_sgfs[seq]))
+                        (s_id, hr, count, FLAGS.run_name, b_wins[seq], example_sgfs[seq]))
             jc_id = cur.lastrowid
 
             for n,ct in next_moves[seq].items():
