@@ -21,7 +21,7 @@ import sqlite3
 import collections
 import datetime as dt
 
-from flask import Flask, g
+from flask import Flask, g, jsonify
 from timeit import default_timer as timer
 
 import os
@@ -29,14 +29,13 @@ import flask
 
 import oneoffs.joseki.opening_freqs as openings
 
-# Suppress Flask's info logging.
-log = logging.getLogger("werkzeug")
-log.setLevel(logging.WARNING)
-
 # static_folder is location of npm build
 app = Flask(__name__, static_url_path="", static_folder="./build")
 
-DATABASE = '/data/sgf/wr_joseki_3000.db' # relative to joseki_query.py
+# Path to database relative to joseki_query.py, with pre-extracted joseki
+# information (see 'opening_frequencies.py')
+DATABASE = '/data/sgf/wr_joseki_3000.db'
+assert os.path.exists(DATABASE)
 
 def get_db():
     db = getattr(g, '_database', None)
@@ -51,12 +50,18 @@ def close_connection(exception):
         db.close()
 
 
-def query_db(seq):
+def get_sequence_hour_counts(seq):
     cur = get_db().execute('''
                      select run, hour, count from joseki_counts
-                           where seq_id = (select id from joseki where seq = ?);
+                           where seq_id in (select id from joseki where seq = ?);
                      ''', (seq, ))
     return list(cur.fetchall())
+
+def seq_id_or_none(db, seq):
+    s_id = db.execute("select id from joseki where seq = ?", (prefix,)).fetchone()
+    if not s_id:
+        return None
+    else return s_id[0]
 
 @app.route("/")
 def index():
@@ -70,17 +75,19 @@ def nexts():
 
     db = get_db()
 
+    # If error, return this default result.
     res = {'count': 0, 'next_moves': {}}
 
+    # For the blank board, there's no 'prefix' string sent, and so there's no
+    # 'next_move' information to be had.  This selects and counts all the unique
+    # opening moves from the joseki table.
     if not prefix:
         nexts = db.execute("select distinct(substr(seq, 0, 7)), count(*) from joseki group  by 1;").fetchall()
         total = sum([n[1] for n in nexts])
     else:
-        s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
+        s_id = seq_id_or_none(db, prefix)
         if not s_id:
-            return flask.Response(json.dumps(res), mimetype='text/json')
-        else:
-            s_id = s_id[0]
+            return jsonify(res)
 
         if run is None:
             nexts = db.execute("""
@@ -98,18 +105,15 @@ def nexts():
                                """, (s_id, run)).fetchall()
             end = timer()
             print('%.4f seconds for fancy join.' % (end-start,))
-            total = db.execute("select sum(count) from joseki_counts where seq_id = ? and run=?",
+            total = db.execute("select sum(count) from joseki_counts where seq_id = ? and run = ?",
                                (s_id, run)).fetchone()[0]
 
     if not nexts:
         print("No next moves found, post params:", d['params'])
-        return flask.Response(json.dumps(res), mimetype='text/json')
+        return jsonify(res)
 
-    next_moves = {}
-    tot = 0
-    for nxt, ct in nexts:
-        next_moves[nxt] = ct
-        tot += ct
+    next_moves = dict(nexts)
+    tot = sum(next_moves.values())
 
     for k in next_moves:
         next_moves[k] /= tot
@@ -120,7 +124,7 @@ def nexts():
     res = {'count': total,
            'next_moves': next_moves}
 
-    return flask.Response(json.dumps(res), mimetype='text/json')
+    return jsonify(res)
 
 
 @app.route("/games", methods=["POST"])
@@ -130,30 +134,29 @@ def games():
     sort_hour = d['params']['sort']
     run = d['params']['run']
     # "page" is 1-indexed, so subtract 1 to get the proper OFFSET.
-    page = d['params']['page'] - 1 
+    page = d['params']['page'] - 1
     db = get_db()
 
-    if (sort_hour.lower() != 'desc' and sort_hour.lower() != 'asc'):
+    if sort_hour.lower() not in ('desc', 'asc'):
         print("Invalid input for sort_hour param: ", sort_hour)
-        return flask.Response(json.dumps({'rows': []}), mimetype='text/json')
+        return jsonify({'rows': []})
 
-    s_id = db.execute("select id from joseki where seq=?", (prefix,)).fetchone()
+    s_id = seq_id_or_none(db, prefix)
     if not s_id:
-        return flask.Response(json.dumps({'rows': []}), mimetype='text/json')
-    s_id = s_id[0]
+        return jsonify({'rows': []})
 
     q = """select example_sgf, hour, run, b_wins*1.0/count from joseki_counts
-        where seq_id=? {} order by hour {} limit 30 offset ?""".format(
+        where seq_id = ? {} order by hour {} limit 30 offset ?""".format(
             "and run = ?" if run else "", sort_hour)
 
     if run:
         rows = db.execute(q, (s_id, run, page * 30)).fetchall()
     else:
         rows = db.execute(q, (s_id, page * 30)).fetchall()
+
     res = [ {'game': os.path.basename(r[0]), 'hour': r[1],
              'run': r[2], 'winrate': r[3]} for r in rows]
-
-    return flask.Response(json.dumps({'rows': res}), mimetype='text/json')
+    return jsonify({'rows': res}) 
 
 
 @app.route("/search", methods=["POST"])
@@ -171,10 +174,9 @@ def search():
     cols = []
     cols.append({'id': 'time', 'label': '% of Training', 'type': 'number'})
     for run in runs:
-        cols.append({'id': run + 'count', 'label': run + ' times seen', 'type': 'number'})
+        cols.append({'id': run + ' count', 'label': run + ' times seen', 'type': 'number'})
 
-    data = []
-    sequence_counts = query_db(query)
+    sequence_counts = get_sequence_hour_counts(query)
 
     rows = collections.defaultdict(lambda: [0 for i in range(len(runs))])
 
@@ -186,5 +188,4 @@ def search():
     row_data = [ {'c': [ {'v': key} ] + [{'v': v if v else None} for v in value ] }
                 for key,value in rows.items()]
     obj = {'cols': cols, "rows": row_data, "sequence": query}
-    data.append(obj)
-    return flask.Response(json.dumps(obj), mimetype='text/json')
+    return jsonify(obj)
