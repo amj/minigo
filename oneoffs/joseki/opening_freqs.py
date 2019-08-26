@@ -237,8 +237,7 @@ def extract_corners(moves):
             elif canonical is False:
                 x, y = y, x
             next_move = sgf_format((color, (18 - y, x)))
-            if seq:
-                next_moves[seq][next_move] += 1
+            next_moves[seq][next_move] += 1
             seq += next_move
             sequence_counts[seq] += 1
 
@@ -294,15 +293,13 @@ def analyze_dir(directory):
 
             cur.execute("""
                  INSERT INTO joseki_counts(seq_id, hour, count, run, b_wins, example_sgf) VALUES (?, ?, ?, ?, ?, ?)
-                 """,
-                        (s_id, hr, count, FLAGS.run_name, b_wins[seq], example_sgfs[seq]))
+                 """, (s_id, hr, count, FLAGS.run_name, b_wins[seq], example_sgfs[seq]))
             jc_id = cur.lastrowid
 
             for next_move, next_count in next_moves[seq].items():
                 cur.execute("""
                      INSERT INTO next_moves(seq_id, joseki_hour_id, next_move, count) VALUES (?, ?, ?, ?)
-                     """,
-                            (s_id, jc_id, next_move, next_count))
+                     """, (s_id, jc_id, next_move, next_count))
 
         db.commit()
     db.close()

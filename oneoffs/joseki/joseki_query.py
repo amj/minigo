@@ -16,7 +16,6 @@
 import sys
 sys.path.insert(0, '.')  # nopep8
 import logging
-import json
 import sqlite3
 import collections
 import datetime as dt
@@ -58,10 +57,11 @@ def get_sequence_hour_counts(seq):
     return list(cur.fetchall())
 
 def seq_id_or_none(db, seq):
-    s_id = db.execute("select id from joseki where seq = ?", (prefix,)).fetchone()
+    s_id = db.execute("select id from joseki where seq = ?", (seq,)).fetchone()
     if not s_id:
         return None
-    else return s_id[0]
+    else:
+        return s_id[0]
 
 @app.route("/")
 def index():
@@ -69,7 +69,7 @@ def index():
 
 @app.route("/nexts", methods=["POST"])
 def nexts():
-    d = json.loads(flask.request.data.decode('utf-8'))
+    d = flask.request.get_json()
     prefix = d['params']['prefix']
     run = d['params']['run']
 
@@ -81,6 +81,9 @@ def nexts():
     # For the blank board, there's no 'prefix' string sent, and so there's no
     # 'next_move' information to be had.  This selects and counts all the unique
     # opening moves from the joseki table.
+
+    # TODO: Once the db is rebuilt with empty opening stats, this special case
+    # could be removed.
     if not prefix:
         nexts = db.execute("select distinct(substr(seq, 0, 7)), count(*) from joseki group  by 1;").fetchall()
         total = sum([n[1] for n in nexts])
@@ -129,7 +132,7 @@ def nexts():
 
 @app.route("/games", methods=["POST"])
 def games():
-    d = json.loads(flask.request.data.decode('utf-8'))
+    d = flask.request.get_json()
     prefix = d['params']['sgf']
     sort_hour = d['params']['sort']
     run = d['params']['run']
@@ -156,12 +159,12 @@ def games():
 
     res = [ {'game': os.path.basename(r[0]), 'hour': r[1],
              'run': r[2], 'winrate': r[3]} for r in rows]
-    return jsonify({'rows': res}) 
+    return jsonify({'rows': res})
 
 
 @app.route("/search", methods=["POST"])
 def search():
-    d = json.loads(flask.request.data.decode('utf-8'))
+    d = flask.request.get_json()
     print(d)
     query = d['params']['sgf']
 
