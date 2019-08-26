@@ -33,7 +33,7 @@ from hashlib import sha256
 import sqlite3
 import random
 import multiprocessing as mp
-from collections import Counter, namedtuple, defaultdict
+from collections import Counter, defaultdict
 import datetime as dt
 import re
 import functools
@@ -138,13 +138,6 @@ def build_run_time_transformers(ranges, buckets=250):
     return funcs
 
 
-def namedtuple_factory(cursor, row):
-    """Returns sqlite rows as named tuples."""
-    fields = [col[0] for col in cursor.description]
-    Row = namedtuple("Row", fields)
-    return Row(*row)
-
-
 def move_to_corner(move):
     """
     Take a move ('color', (row,col)).
@@ -225,6 +218,9 @@ def extract_corners(moves):
     # we now have the sequences of the four corners of the board extracted, but
     # not 'canonical', i.e., the reflections across y=x would be distinct.
     # so, canonicalize them
+    # TODO: this doesn't really work for when the position returns to a
+    # symmetrical one, e.g.  4-4, knight approach, tenuki, knight approach the
+    # other side = two sets of sequences even though the position is symmetric.
 
     sequence_counts = Counter()
     next_moves = defaultdict(Counter)
@@ -293,7 +289,7 @@ def analyze_dir(directory):
                 s_id = s_id[0]
             else:
                 cur.execute(""" INSERT INTO joseki(seq, length, num_tenukis) VALUES(?, ?, ?) """,
-                           (seq, len(seq.split(';')[:-1]), count_tenukis(seq)))
+                            (seq, seq.count(';'), count_tenukis(seq)))
                 s_id = cur.lastrowid
 
             cur.execute("""
@@ -302,11 +298,11 @@ def analyze_dir(directory):
                         (s_id, hr, count, FLAGS.run_name, b_wins[seq], example_sgfs[seq]))
             jc_id = cur.lastrowid
 
-            for n,ct in next_moves[seq].items():
+            for next_move, next_count in next_moves[seq].items():
                 cur.execute("""
                      INSERT INTO next_moves(seq_id, joseki_hour_id, next_move, count) VALUES (?, ?, ?, ?)
                      """,
-                            (s_id, jc_id, n, ct))
+                            (s_id, jc_id, next_move, next_count))
 
         db.commit()
     db.close()
