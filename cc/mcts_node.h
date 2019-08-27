@@ -54,6 +54,7 @@ class MctsNode {
   struct ChildInfo {
     Coord c = Coord::kInvalid;
     float N;
+    float P;
     float action_score;
   };
 
@@ -148,6 +149,9 @@ class MctsNode {
 
   // Remove all children from the node except c.
   void PruneChildren(Coord c);
+
+  // Adjust the visit counts via whatever hairbrained scheme.
+  void ReshapeFinalVisits();
 
   std::array<float, kNumMoves> CalculateChildActionScore() const;
 

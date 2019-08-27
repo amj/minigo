@@ -15,6 +15,7 @@
 #include "cc/mcts_player.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <sstream>
 #include <utility>
 
@@ -42,6 +43,7 @@ std::ostream& operator<<(std::ostream& os, const MctsPlayer::Options& options) {
      << " decay_factor:" << options.decay_factor
      << " fastplay_frequency:" << options.fastplay_frequency
      << " fastplay_readouts:" << options.fastplay_readouts
+     << " target_pruning:" << options.target_pruning
      << " random_seed:" << options.random_seed << std::flush;
   return os;
 }
@@ -155,6 +157,10 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
   }
   if (ShouldResign()) {
     return Coord::kResign;
+  }
+
+  if (options_.target_pruning && inject_noise) {
+    root_->ReshapeFinalVisits();
   }
 
   return PickMove();
