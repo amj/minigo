@@ -151,7 +151,7 @@ void MctsNode::ReshapeFinalVisits() {
     //total += edges[i].N - new_N;
     edges[i].N = new_N;
   }
-  //MG_LOG(DEBUG) << "Pruned " << total << " visits.";
+  //MG_LOG(INFO) << "Pruned " << total << " visits.";
 }
 
 
