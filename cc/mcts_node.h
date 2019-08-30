@@ -162,6 +162,7 @@ class MctsNode {
     return Q * to_play + U - 1000.0f * !position.legal_move(i);
   }
 
+
   MctsNode* MaybeAddChild(Coord c);
 
   // Calculate and print statistics about the tree.

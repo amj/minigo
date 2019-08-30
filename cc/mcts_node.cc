@@ -140,19 +140,33 @@ void MctsNode::ReshapeFinalVisits() {
   MG_LOG(INFO) << "Best CAS: " << best_cas;
   MG_LOG(INFO) << "Post_prune: ";
   int total = 0;
-  float Q;
+  //float Q;
   for (int i = 0; i < kNumMoves; ++i) {
     // Store Q before modifications, as child_Q depends on edges[i].N.
+    if (i == uint16_t(best)){
+      continue;
+    }
+    /*
     Q = child_Q(i);
     while ((Q * to_play + child_U(i) < best_cas) &&
-           (edges[i].N > 0)) {
+                             (edges[i].N > 0)) {
       edges[i].N --;
       total++;
     }
+    */
+
+    // Closed form doesn't work :(
+    int new_N = std::max(0, std::min(int(child_N(i)),
+                         int(std::floor(-1 * (U_scale() * child_P(i) * std::sqrt(N())) / 
+                         ( (child_Q(i) * to_play) - best_cas)) - 1 )));
+    // MG_LOG(INFO) << i << ": " << new_N << " was: " << edges[i].N;
+    total += edges[i].N - new_N;
+    edges[i].N = new_N;
   }
 
-  MG_LOG(INFO) << "Pruned " << total << " visits.";
   MG_LOG(INFO) << Describe();
+
+  MG_LOG(INFO) << "Pruned " << total << " visits.";
 }
 
 

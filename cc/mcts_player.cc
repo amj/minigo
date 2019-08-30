@@ -159,11 +159,15 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
     return Coord::kResign;
   }
 
+  auto c = PickMove();
+
+  // After picking the move, destructively adjust the visit counts
+  // according to whatever flag-controlled scheme.
   if (options_.target_pruning && inject_noise) {
     root_->ReshapeFinalVisits();
   }
 
-  return PickMove();
+  return c;
 }
 
 Coord MctsPlayer::PickMove() {
@@ -334,6 +338,8 @@ void MctsPlayer::UpdateGame(Coord c) {
     }
     std::reverse(models.begin(), models.end());
   }
+
+  // Reshape the targets if needed.
 
   // Build a comment for the move.
   auto comment = root_->Describe();
