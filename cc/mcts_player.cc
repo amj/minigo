@@ -159,6 +159,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
     return Coord::kResign;
   }
 
+  // Pick the move before altering the tree for training targets.
   auto c = PickMove();
 
   // After picking the move, destructively adjust the visit counts
