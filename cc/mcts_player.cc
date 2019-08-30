@@ -340,8 +340,6 @@ void MctsPlayer::UpdateGame(Coord c) {
     std::reverse(models.begin(), models.end());
   }
 
-  // Reshape the targets if needed.
-
   // Build a comment for the move.
   auto comment = root_->Describe();
   if (!models.empty()) {

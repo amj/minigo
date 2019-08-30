@@ -13,7 +13,6 @@
 // limitations under the License.
 
 #include "cc/mcts_node.h"
-#include <sys/types.h>
 
 #include <array>
 #include <set>
@@ -435,8 +434,7 @@ class ReshapeTargetTest : public ::testing::Test {
     best_ = -1;
   }
 
-  void SearchTestablePosition(
-      TestablePosition p) {
+  void SearchPosition(const Position& p) {
     float to_play = p.to_play() == Color::kBlack ? 1 : -1;
 
     std::array<float, kNumMoves> probs;
@@ -450,6 +448,12 @@ class ReshapeTargetTest : public ::testing::Test {
     root_->SelectLeaf()->IncorporateResults(0.0, probs, 0, root_);
 
     MctsNode* leaf;
+
+    // We gave one move a high prior and a neutral value.
+    // After many reads, U will increase for the other moves, but they're worse
+    // than the one with the high prior.
+    // As a result, we can prune those away until the uncertainty rises to
+    // compensate for their worse reward estimate.
     for (int i = 0; i < 10000; ++i) {
       leaf = root_->SelectLeaf();
       if (leaf->move == 17) {
@@ -459,6 +463,8 @@ class ReshapeTargetTest : public ::testing::Test {
       }
     }
 
+    // Child_Q(i), as an average, is actually just computed as W/N.
+    // Since we're changing N, we'll want to save the Q-values for the children,
     pre_scores_ = root_->CalculateChildActionScore();
 
     std::array<float, kNumMoves> saved_Q;
@@ -470,6 +476,13 @@ class ReshapeTargetTest : public ::testing::Test {
 
     float U_common = root_->U_scale() * std::sqrt(std::max<float>(1, root_->N() - 1));
 
+    // Our tests want to verify that we lowered N until the action score
+    // (computed using the after-search estimate of Q) was nearly equal to the
+    // action score of the best move.
+    //
+    // Since "reshaping the target distribution" means twiddling the visit
+    // counts, the action scores -- based on Q -- will be misleading.  So,
+    // compute the action score using the saved values of Q, as outlined above.
     for (int i = 0; i < kNumMoves; ++i) {
       post_scores_[i] = (saved_Q[i] * to_play +
                          (U_common * root_->child_P(i) / (1 + root_->child_N(i))));
@@ -479,14 +492,14 @@ class ReshapeTargetTest : public ::testing::Test {
 
   std::array<float, kNumMoves> post_scores_;
   std::array<float, kNumMoves> pre_scores_;
-  uint16_t best_;
+  size_t best_;
   MctsNode* root_;
 };
 
 
 TEST_F(ReshapeTargetTest, TestReshapeTargetsWhite) {
   auto board = TestablePosition("", Color::kWhite);
-  SearchTestablePosition(TestablePosition("", Color::kWhite));
+  SearchPosition(board);
   int tot_N = 0;
 
   // Scores should never get smaller as a result of visits being deducted.
@@ -507,7 +520,7 @@ TEST_F(ReshapeTargetTest, TestReshapeTargetsWhite) {
 // As above
 TEST_F(ReshapeTargetTest, TestReshapeTargetsBlack) {
   auto board = TestablePosition("", Color::kBlack);
-  SearchTestablePosition(TestablePosition("", Color::kBlack));
+  SearchPosition(board);
   int tot_N = 0;
   for (int i = 0; i < kNumMoves; i++) {
     EXPECT_LE(pre_scores_[i], post_scores_[i]);

@@ -142,14 +142,17 @@ void MctsNode::ReshapeFinalVisits() {
       continue;
     }
 
-    int new_N = std::max(0, std::min(int(child_N(i)),
-                         int(std::floor(-1 * (U_scale() * child_P(i) * std::sqrt(N())) /
-                         ( (child_Q(i) * to_play) - best_cas)) - 1 )));
+    // Change N_child to the smallest value that satisfies the inequality
+    // best_cas > Q + (U_scale * P * sqrt(N_parent) / N_child)
+    // Solving for N_child, we get:
+    int new_N = std::max(0, std::min(static_cast<int>(child_N(i)),
+        static_cast<int>(-1 * (U_scale() * child_P(i) * std::sqrt(N())) /
+        ((child_Q(i) * to_play) - best_cas)) - 1 ));
     total += edges[i].N - new_N;
     edges[i].N = new_N;
-  }
 
-  MG_LOG(INFO) << "Pruned " << total << " visits.";
+  }
+  MG_LOG(DEBUG) << "Pruned " << total << " visits.";
 }
 
 
