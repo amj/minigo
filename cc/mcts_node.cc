@@ -136,7 +136,7 @@ void MctsNode::ReshapeFinalVisits() {
   float best_cas =
       CalculateSingleMoveChildActionScore(to_play, U_common, uint16_t(best));
 
-  int total = 0;
+  //int total = 0;
   for (int i = 0; i < kNumMoves; ++i) {
     if (i == uint16_t(best)) {
       continue;
@@ -148,11 +148,10 @@ void MctsNode::ReshapeFinalVisits() {
     int new_N = std::max(0, std::min(static_cast<int>(child_N(i)),
         static_cast<int>(-1 * (U_scale() * child_P(i) * std::sqrt(N())) /
         ((child_Q(i) * to_play) - best_cas)) - 1 ));
-    total += edges[i].N - new_N;
+    //total += edges[i].N - new_N;
     edges[i].N = new_N;
-
   }
-  MG_LOG(DEBUG) << "Pruned " << total << " visits.";
+  //MG_LOG(DEBUG) << "Pruned " << total << " visits.";
 }
 
 
