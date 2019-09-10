@@ -33,7 +33,7 @@ app = Flask(__name__, static_url_path="", static_folder="./build")
 
 # Path to database relative to joseki_query.py, with pre-extracted joseki
 # information (see 'opening_frequencies.py')
-DATABASE = '/data/sgf/wr_joseki_3000.db'
+DATABASE = ''
 assert os.path.exists(DATABASE)
 
 def get_db():
@@ -58,17 +58,14 @@ def get_sequence_hour_counts(seq):
 
 def seq_id_or_none(db, seq):
     s_id = db.execute("select id from joseki where seq = ?", (seq,)).fetchone()
-    if not s_id:
-        return None
-    else:
-        return s_id[0]
+    return s_id[0] if s_id else None
 
 @app.route("/")
 def index():
     return app.send_static_file("index.html")
 
 @app.route("/nexts", methods=["POST"])
-def nexts():
+def next_moves():
     d = flask.request.get_json()
     prefix = d['params']['prefix']
     run = d['params']['run']

@@ -176,7 +176,9 @@ def move_to_corner(move):
 
 def extract_from_game(game_path):
     """
-    In addition to the corner information returned, we also add the winner
+    In addition to the corner information returned, we also add the winner,
+    returning a tuple of ((sequence_counts, nextmove_counts), winner)
+    where `winner` == 1 for B win, 0 otherwise.
     """
     with open(game_path) as sgf_file:
         game_data = sgf_file.read().encode('utf-8')
@@ -188,7 +190,7 @@ def extract_from_game(game_path):
         print("bad file: ", game_path)
         return Counter(), {}
 
-    return (extract_corners(moves), 1 if g.get_winner() == 'b' else 0)
+    return (extract_corners(moves), 1 if g.get_winner().lower() == 'b' else 0)
 
 
 def extract_corners(moves):
