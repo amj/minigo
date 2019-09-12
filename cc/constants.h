@@ -41,8 +41,6 @@ constexpr int kMaxSearchDepth = static_cast<int>(kN * kN * 2);
 
 constexpr float kDefaultKomi = 7.5;
 
-constexpr float kDirichletAlpha = 0.03f * 361 / (kN * kN);
-
 // static constexpr float kPuct = 2.50;
 static constexpr float kUct_base = 19652;
 static constexpr float kUct_init = 1.25;

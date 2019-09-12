@@ -64,6 +64,9 @@ flags.DEFINE_string('flags_dir', None,
 flags.DEFINE_integer('window_size', 10,
                      'Maximum number of recent selfplay rounds to train on.')
 
+flags.DEFINE_float('train_filter', 1,
+                   'Fraction of selfplay games to pass to training.')
+
 flags.DEFINE_boolean('parallel_post_train', False,
                      'If true, run the post-training stages (eval, validation '
                      '& selfplay) in parallel.')
@@ -273,15 +276,41 @@ async def run(*cmd):
     return stdout.split('\n')
 
 
-def get_golden_chunk_records():
-    """Return up to num_records of golden chunks to train on.
+async def sample_training_examples(state):
+    """Sample training examples from recent selfplay games.
+
+    Args:
+        state: the RL loop State instance.
 
     Returns:
         A list of golden chunks up to num_records in length, sorted by path.
     """
 
-    pattern = os.path.join(fsdb.golden_chunk_dir(), '*.zz')
-    return sorted(tf.gfile.Glob(pattern), reverse=True)[:FLAGS.window_size]
+    # TODO(tommadams): make this a flag
+    num_shards = 8
+
+    dirs = [x.path for x in os.scandir(fsdb.selfplay_dir()) if x.is_dir()]
+    src_patterns = []
+    for d in sorted(dirs, reverse=True)[:FLAGS.window_size]:
+        src_patterns.append(os.path.join(d, '*', '*', '*.tfrecord.zz'))
+
+    dst_path = os.path.join(fsdb.golden_chunk_dir(),
+                            '{}.tfrecord.zz'.format(state.train_model_name))
+
+    logging.info('Writing training chunks to %s', dst_path)
+    lines = await sample_records(src_patterns, dst_path,
+                                 num_read_threads=8,
+                                 num_write_threads=num_shards,
+                                 sample_frac=FLAGS.train_filter)
+    logging.info('\n'.join(lines))
+
+    chunk_pattern = os.path.join(
+        fsdb.golden_chunk_dir(),
+        '{}-*-of-*.tfrecord.zz'.format(state.train_model_name))
+    chunk_paths = sorted(tf.gfile.Glob(chunk_pattern))
+    assert len(chunk_paths) == num_shards
+
+    return chunk_paths
 
 
 async def run_commands(commands):
@@ -311,19 +340,19 @@ async def bootstrap_selfplay(state):
         '--num_games={}'.format(FLAGS.selfplay_num_games),
         '--parallel_games=32',
         '--model=random:0,0.4:0.4',
-        '--output_dir={}'.format(output_dir),
-        '--holdout_dir={}'.format(holdout_dir),
+        '--output_dir={}/0'.format(output_dir),
+        '--holdout_dir={}/0'.format(holdout_dir),
         '--sgf_dir={}'.format(sgf_dir))
     logging.info('\n'.join(lines[-6:]))
 
-    # Write examples to a single record.
-    src_pattern = os.path.join(output_dir, '*', '*.zz')
-    dst_path = os.path.join(fsdb.golden_chunk_dir(),
-                            output_name + '.tfrecord.zz')
-    logging.info('Writing golden chunk "{}" from "{}"'.format(dst_path,
-                                                              src_pattern))
-    lines = await sample_records(src_pattern, dst_path)
-    logging.info('\n'.join(lines))
+    ### Write examples to a single record.
+    ### src_pattern = os.path.join(output_dir, '*', '*.zz')
+    ### dst_path = os.path.join(fsdb.golden_chunk_dir(),
+    ###                         output_name + '.tfrecord.zz')
+    ### logging.info('Writing golden chunk "{}" from "{}"'.format(dst_path,
+    ###                                                           src_pattern))
+    ### lines = await sample_records(src_pattern, dst_path)
+    ### logging.info('\n'.join(lines))
 
 
 # Self-play a number of games.
@@ -373,14 +402,16 @@ async def selfplay(state):
                  black_wins_total / num_games,
                  white_wins_total / num_games)
 
-    # Write examples to a single record.
-    src_pattern = os.path.join(output_dir, '*/*', '*.zz')
-    dst_path = os.path.join(fsdb.golden_chunk_dir(),
-                            state.output_model_name + '.tfrecord.zz')
-    logging.info('Writing golden chunk "{}" from "{}"'.format(dst_path,
-                                                              src_pattern))
-    lines = await sample_records(src_pattern, dst_path)
-    logging.info('\n'.join(lines))
+    ### # Write examples to a single record.
+    ### src_pattern = os.path.join(output_dir, '*/*', '*.tfrecord.zz')
+    ### dst_path = os.path.join(
+    ###     output_dir, state.output_model_name + '.tfrecord.zz')
+    ### logging.info('Writing selfplay records to "{}" from "{}"'.format(
+    ###     dst_path, src_pattern))
+    ### lines = await sample_records(src_pattern, dst_path,
+    ###                              num_read_threads=len(FLAGS.selfplay_devices),
+    ###                              num_write_threads=4, sample_frac=1)
+    ### logging.info('\n'.join(lines))
 
 
 async def train(state, tf_records):
@@ -457,16 +488,18 @@ async def evaluate_trained_model(state):
         os.path.join(fsdb.eval_dir(), state.train_model_name))
 
 
-async def sample_records(src_pattern, dst_path):
-    # TODO(tommadams): expose flags
+async def sample_records(src_patterns, dst_path, num_read_threads,
+                         num_write_threads, sample_frac=0, num_records=0):
     return await run(
         'bazel-bin/cc/sample_records',
-        '--num_read_threads=1',
-        '--sample_frac=1',
+        '--num_read_threads={}'.format(num_read_threads),
+        '--num_write_threads={}'.format(num_write_threads),
+        '--sample_frac={}'.format(sample_frac),
+        '--num_records={}'.format(num_records),
         '--compression=1',
         '--shuffle=true',
         '--dst={}'.format(dst_path),
-        src_pattern)
+        *src_patterns)
 
 
 def rl_loop():
@@ -481,7 +514,7 @@ def rl_loop():
         wait(bootstrap_selfplay(state))
 
         # Train a real model from the random selfplay games.
-        tf_records = get_golden_chunk_records()
+        tf_records = wait(sample_training_examples(state))
         state.iter_num += 1
         wait(train(state, tf_records))
 
@@ -499,7 +532,7 @@ def rl_loop():
 
     # Now start the full training loop.
     while state.iter_num <= FLAGS.iterations:
-        tf_records = get_golden_chunk_records()
+        tf_records = wait(sample_training_examples(state))
         state.iter_num += 1
 
         # Run selfplay in parallel with sequential (train, eval).

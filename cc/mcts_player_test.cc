@@ -173,7 +173,7 @@ TEST_F(MctsPlayerTest, InjectNoise) {
 
   Random rnd(456943875, 1);
   std::array<float, kNumMoves> noise;
-  rnd.Dirichlet(kDirichletAlpha, &noise);
+  rnd.Dirichlet(options.dirichlet_alpha, &noise);
   root->InjectNoise(noise, 0.25);
 
   // Priors should still be normalized after injecting noise.

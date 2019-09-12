@@ -70,6 +70,10 @@ DEFINE_int32(virtual_losses, 8,
 DEFINE_bool(inject_noise, true,
             "If true, inject noise into the root position at the start of "
             "each tree search.");
+DEFINE_double(dirichlet_alpha, 0.03,
+              "Controls the distribution of Dirichlet noise added to the root "
+              "if inject_noise is true. The actual alpha value used when "
+              "calculating the noise is dirichlet_alpha * 361 / (N * N).");
 DEFINE_double(noise_mix, 0.25,
               "If inject_noise is true, the amount of noise to mix into the "
               "root.");
@@ -180,6 +184,7 @@ void ParseOptionsFromFlags(Game::Options* game_options,
   player_options->virtual_losses = FLAGS_virtual_losses;
   player_options->random_seed = FLAGS_seed;
   player_options->random_symmetry = FLAGS_random_symmetry;
+  player_options->dirichlet_alpha = FLAGS_dirichlet_alpha * 0.03f * 361 / (kN * kN);
   player_options->num_readouts = FLAGS_num_readouts;
   player_options->seconds_per_move = FLAGS_seconds_per_move;
   player_options->time_limit = FLAGS_time_limit;

@@ -82,6 +82,10 @@ class MctsPlayer {
     // of time spent thinking as the game progresses.
     float decay_factor = 0.98;
 
+    // Distribution of Dirichlet noise added to the root before search if
+    // inject_noise is true.
+    float dirichlet_alpha = 0.03f * 361 / (kN * kN);
+
     // "Playout Cap Oscillation" as per the KataGo paper.
     // If fastplay_frequency > 0, tree search is modified as follows:
     //   - Each move is either a "low-readout" fast move, or a full, slow move.

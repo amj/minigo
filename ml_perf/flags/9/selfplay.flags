@@ -10,8 +10,8 @@
 --holdout_pct=0.00
 --disable_resign_pct=1.0
 --resign_threshold=-0.99
---virtual_losses=2
+--virtual_losses=4
 ### --target_pruning=1
 
 # Device-specific selfplay flags.
-### --cache_size_mb=10240
+--cache_size_mb=10240

@@ -114,7 +114,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
   auto start = absl::Now();
 
   if (inject_noise) {
-    InjectNoise(kDirichletAlpha);
+    InjectNoise(options_.dirichlet_alpha);
   }
 
   int current_readouts = root_->N();
@@ -192,7 +192,7 @@ void MctsPlayer::TreeSearch(int num_leaves) {
 void MctsPlayer::InjectNoise(float dirichlet_alpha) {
   MaybeExpandRoot();
   std::array<float, kNumMoves> noise;
-  rnd_.Dirichlet(kDirichletAlpha, &noise);
+  rnd_.Dirichlet(dirichlet_alpha, &noise);
   root_->InjectNoise(noise, options_.noise_mix);
 }
 
