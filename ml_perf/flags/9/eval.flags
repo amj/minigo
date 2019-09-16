@@ -3,5 +3,6 @@
 --flagfile=ml_perf/flags/9/selfplay.flags
 
 # --num_readouts=240
+--num_readouts=80
 --fastplay_frequency=0
 --resign_enabled=false

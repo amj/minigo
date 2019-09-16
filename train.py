@@ -175,6 +175,7 @@ def train(*tf_records: "Records to train on"):
                 FLAGS.train_batch_size,
                 tf_records,
                 filter_amount=FLAGS.filter_amount,
+                shuffle_examples=False,
                 shuffle_buffer_size=FLAGS.shuffle_buffer_size,
                 random_rotation=True)
 

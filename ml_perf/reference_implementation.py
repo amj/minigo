@@ -71,8 +71,8 @@ flags.DEFINE_boolean('parallel_post_train', False,
                      'If true, run the post-training stages (eval, validation '
                      '& selfplay) in parallel.')
 
-flags.DEFINE_list('train_devices', None, '')
-flags.DEFINE_list('eval_devices', None, '')
+flags.DEFINE_list('train_devices', ["0",], '')
+flags.DEFINE_list('eval_devices', ["0",], '')
 flags.DEFINE_list('selfplay_devices', None, '')
 
 flags.DEFINE_integer('bootstrap_num_models', 8,
@@ -291,7 +291,24 @@ async def sample_training_examples(state):
 
     dirs = [x.path for x in os.scandir(fsdb.selfplay_dir()) if x.is_dir()]
     src_patterns = []
-    for d in sorted(dirs, reverse=True)[:FLAGS.window_size]:
+    if state.iter_num < 5:
+        window_size = 2
+        sample_frac = 0.999
+    elif state.iter_num < 10:
+        window_size = 3
+        sample_frac = 0.999
+    elif state.iter_num < 15:
+        window_size = 5
+        sample_frac = 0.7
+    elif state.iter_num < 25:
+        window_size = 10
+        sample_frac = 0.35
+    else:
+        window_size = 15
+        sample_frac = 0.25
+
+    print("window size / sample frac: ", window_size, sample_frac)
+    for d in sorted(dirs, reverse=True)[:window_size]:
         src_patterns.append(os.path.join(d, '*', '*', '*.tfrecord.zz'))
 
     dst_path = os.path.join(fsdb.golden_chunk_dir(),
@@ -301,7 +318,7 @@ async def sample_training_examples(state):
     lines = await sample_records(src_patterns, dst_path,
                                  num_read_threads=8,
                                  num_write_threads=num_shards,
-                                 sample_frac=FLAGS.train_filter)
+                                 sample_frac=sample_frac)
     logging.info('\n'.join(lines))
 
     chunk_pattern = os.path.join(
@@ -441,6 +458,7 @@ async def train(state, tf_records):
 
 
 async def train_eval(state, tf_records):
+
     await train(state, tf_records)
     return await evaluate_trained_model(state)
 
@@ -542,7 +560,7 @@ def rl_loop():
 
         # If we're bootstrapping a checkpoint, evaluate the newly trained model
         # against the target.
-        if FLAGS.bootstrap:
+        if FLAGS.bootstrap and state.gen_num > 15:
             target_model_path = os.path.join(fsdb.models_dir(), 'target.pb')
             sgf_dir = os.path.join(
                 fsdb.eval_dir(),
@@ -568,6 +586,9 @@ def rl_loop():
 def main(unused_argv):
     """Run the reinforcement learning loop."""
 
+    print("***************************************************************************************************")
+    print(FLAGS.selfplay_devices)
+    print(FLAGS.train_devices)
     print('Wiping dir %s' % FLAGS.base_dir, flush=True)
     shutil.rmtree(FLAGS.base_dir, ignore_errors=True)
     dirs = [fsdb.models_dir(), fsdb.selfplay_dir(), fsdb.holdout_dir(),

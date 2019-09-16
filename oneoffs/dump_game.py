@@ -45,17 +45,36 @@ def main(argv):
     else:
         board_size = int(m.group(1))
 
+    m = re.search(r'RE\[([^]]+)', contents)
+    if not m:
+        print('Couldn\'t find RE node')
+        result='unknown'
+    else:
+        result = m.group(1)
+
+    m = re.search(r'PB\[([^]]+)', contents)
+    if not m:
+        print('Couldn\'t find PB node')
+        player='unknown'
+    else:
+        player = m.group(1)
+
+
     # Set the board size and import the Minigo libs.
     os.environ['BOARD_SIZE'] = str(board_size)
     import coords
     import go
     import sgf_wrapper
+    import time
 
     # Replay the game.
     for x in sgf_wrapper.replay_sgf(contents):
         to_play = 'B' if x.position.to_play == 1 else 'W'
         print('{}>> {}: {}\n'.format(
             x.position, to_play, coords.to_gtp(x.next_move)))
+        time.sleep(0.1)
+    print("Result:", result)
+    print("Black was:", player)
 
 
 if __name__ == '__main__':

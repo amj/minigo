@@ -352,6 +352,8 @@ class SelfPlayer {
           << "Bigtable output must be of the form: project,instance,table";
       return;
     }
+	int switched=0;
+	int not_switched=0;
 
     for (;;) {
       std::unique_ptr<Game> game;
@@ -431,6 +433,16 @@ class SelfPlayer {
         {
           WTF_SCOPE0("SuggestMove");
           move = player->SuggestMove(readouts, !fastplay);
+	  // reread if fastplay picked pass.
+          if (move == Coord::kPass && fastplay == true) {
+            move = player->SuggestMove(thread_options.player_options.num_readouts, true);
+            //fastplay = false;  // Uncomment to train on rereads.
+            if (move == Coord::kPass) {
+              not_switched++;
+            } else {
+              switched++;
+            }
+          }
         }
 
         // Log tree search stats.
@@ -545,6 +557,7 @@ class SelfPlayer {
       }
     }
 
+    MG_LOG(INFO) << "Switched / Not switched: " << switched << " / " << not_switched;
     MG_LOG(INFO) << "Thread " << thread_id << " stopping";
   }
 

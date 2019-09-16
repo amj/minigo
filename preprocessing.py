@@ -235,7 +235,7 @@ def get_tpu_input_tensors(batch_size, tf_records, num_repeats=1,
             batch_size,
             drop_remainder=True))
 
-    dataset = dataset.prefetch(tf.contrib.data.AUTOTUNE)
+    dataset = dataset.prefetch(batch_size)
     return dataset
 
 

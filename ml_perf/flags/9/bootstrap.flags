@@ -3,6 +3,9 @@
 
 --flagfile=ml_perf/flags/9/selfplay.flags
 
+--num_readouts=20
+--fastplay_readouts=20
 --holdout_pct=0
+--num_games=8192
 # --parallel_games=16
 # --allow_pass=false
