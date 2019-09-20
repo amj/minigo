@@ -396,6 +396,34 @@ TEST(MctsNodeTest, GetMostVisitedPath) {
   EXPECT_EQ(Coord(16), root.GetMostVisitedMove());
 }
 
+TEST(MctsNodeTest, GetMostVisitedBensonRestriction) {
+  // Give two moves a higher probability.
+  std::array<float, kNumMoves> probs;
+  for (float& prob : probs) {
+    prob = 0.001;
+  }
+  probs[0] = 0.002; // A9, a bensons point, has higher priority.
+  MctsNode::EdgeStats root_stats;
+  auto board = TestablePosition(R"(
+    .XO.XO.OO
+    X.XXOOOO.
+    XXX.XO.OO
+    XX..XO.OO
+    .X..XO.O.
+    XX..XO.OO
+    ....XO...
+    ....XO...
+    ....OO...)", Color::kBlack);
+  MctsNode root(&root_stats, board);
+  for (int i= 0; i < 10; i++) {
+    root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
+  }
+
+  EXPECT_EQ(Coord(0), root.GetMostVisitedMove(false));
+  EXPECT_NE(Coord(0), root.GetMostVisitedMove(true));
+  EXPECT_NE(root.GetMostVisitedMove(false), root.GetMostVisitedMove(true));
+}
+
 // Verifies that even when one move is hugely more likely than all the others,
 // SelectLeaf will eventually start exploring other moves given enough
 // iterations.

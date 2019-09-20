@@ -138,7 +138,8 @@ class MctsPlayer {
 
   virtual void NewGame();
 
-  virtual Coord SuggestMove(int new_readouts, bool inject_noise = false);
+  virtual Coord SuggestMove(int new_readouts, bool inject_noise = false,
+                            bool restrict_in_bensons = false);
 
   // Plays the move at point c.
   // If game is non-null, adds a new move to the game's move history and sets
@@ -174,7 +175,7 @@ class MctsPlayer {
 
   // Protected methods that get exposed for testing.
  protected:
-  Coord PickMove();
+  Coord PickMove(bool restrict_in_bensons=false);
 
  private:
   // State that tracks which model is used for each inference.
