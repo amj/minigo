@@ -128,6 +128,7 @@ MctsNode::MctsNode(MctsNode* parent, Coord move)
 Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
   // Find the set of moves with the largest N.
   inline_vector<Coord, kNumMoves> moves;
+  // CalculatePassAlive does not include the kPass point.
   std::array<Color, kN * kN> out_of_bounds;
 
   if (restrict_in_bensons) {
@@ -140,8 +141,8 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
 
   int best_N = -1;
   for (int i = 0; i < kNumMoves; ++i) {
-    if (out_of_bounds[i] != Color::kEmpty) {
-      continue;
+    if ((i != Coord::kPass) && (out_of_bounds[i] != Color::kEmpty)) {
+        continue;
     }
     int cn = child_N(i);
     if (cn >= best_N) {
@@ -160,7 +161,7 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
     return moves[0];
   }
 
-  // Otherwise, break score using the child action score.
+  // Otherwise, break tie using the child action score.
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
   float U_common = U_scale() * std::sqrt(1.0f + N());
 
@@ -181,6 +182,7 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
 
 void MctsNode::ReshapeFinalVisits() {
   Coord best = GetMostVisitedMove();
+  auto pass_alive_regions = position.CalculatePassAliveRegions();
   float U_common = U_scale() * std::sqrt(1.0f + N());
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
   float best_cas =
@@ -192,6 +194,11 @@ void MctsNode::ReshapeFinalVisits() {
   // have given it with our newer understanding of its regret relative to our
   // best move.
   for (int i = 0; i < kNumMoves; ++i) {
+    // Remove visits in pass alive areas.
+    if (pass_alive_regions[i] != Color::kEmpty) {
+      edges[i].N = 0;
+      continue;
+    }
     if (i == uint16_t(best)) {
       continue;
     }

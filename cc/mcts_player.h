@@ -118,6 +118,10 @@ class MctsPlayer {
     // reward distribution.  "False" == no pruning will be applied.
     bool target_pruning = false;
 
+    // If true, this will prevent play in benson's pass-alive regions after 5
+    // passes have been played (by anyone).  It will also zero out any visits
+    // the pass-alive points may have gotten.
+    bool restrict_in_bensons = false;
     friend std::ostream& operator<<(std::ostream& ios, const Options& options);
   };
 
