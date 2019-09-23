@@ -85,8 +85,6 @@ flags.DEFINE_string('work_dir', None,
                     'The Estimator working directory. Used to dump: '
                     'checkpoints, tensorboard logs, etc..')
 
-flags.DEFINE_integer('num_gpus', 1, 'Number of GPUs to use for training.')
-
 flags.DEFINE_bool('use_tpu', False, 'Whether to use TPU for training.')
 
 flags.DEFINE_string(
@@ -546,18 +544,10 @@ def get_estimator():
 def _get_nontpu_estimator():
     session_config = tf.ConfigProto()
     session_config.gpu_options.allow_growth = True
-    if FLAGS.num_gpus > 1:
-        strategy = tf.contrib.distribute.MirroredStrategy(num_gpus=FLAGS.num_gpus)
-        run_config = tf.estimator.RunConfig(
-            save_summary_steps=FLAGS.summary_steps,
-            keep_checkpoint_max=FLAGS.keep_checkpoint_max,
-            train_distribute=strategy,
-            session_config=session_config)
-    else:
-        run_config = tf.estimator.RunConfig(
-            save_summary_steps=FLAGS.summary_steps,
-            keep_checkpoint_max=FLAGS.keep_checkpoint_max,
-            session_config=session_config)
+    run_config = tf.estimator.RunConfig(
+        save_summary_steps=FLAGS.summary_steps,
+        keep_checkpoint_max=FLAGS.keep_checkpoint_max,
+        session_config=session_config)
     return tf.estimator.Estimator(
         model_fn,
         model_dir=FLAGS.work_dir,
