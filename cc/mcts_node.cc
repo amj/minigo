@@ -195,7 +195,7 @@ void MctsNode::ReshapeFinalVisits() {
   // best move.
   for (int i = 0; i < kNumMoves; ++i) {
     // Remove visits in pass alive areas.
-    if (pass_alive_regions[i] != Color::kEmpty) {
+    if ((i != Coord::kPass) && (pass_alive_regions[i] != Color::kEmpty)) {
       edges[i].N = 0;
       continue;
     }
@@ -347,7 +347,10 @@ MctsNode* MctsNode::SelectLeaf() {
     }
 
     auto child_action_score = node->CalculateChildActionScore();
-    Coord best_move = ArgMax(child_action_score);
+    auto best_move = ArgMax(child_action_score);
+    if (!node->position.legal_move(best_move)) {
+      best_move = Coord::kPass;
+    }
     node = node->MaybeAddChild(best_move);
   }
 }
@@ -421,6 +424,8 @@ void MctsNode::IncorporateResults(float value_init_penalty,
     // inferences are being performed, nodes in the tree may already be expanded
     // and have non-zero W values at the time we need to incorporate a result
     // for the node from the value head.
+    // TODO(tommadams): Minigui doesn't work this way any more so we can just
+    // assign.
     edges[i].W += reduced_value;
   }
   BackupValue(value, up_to);
@@ -474,6 +479,14 @@ void MctsNode::PruneChildren(Coord c) {
   children[c] = std::move(child);
 }
 
+void MctsNode::ClearChildren() {
+  // I _think_ this is all the state we need to clear...
+  children.clear();
+  edges = {};
+  *stats = {};
+  ClearFlag(Flag::kExpanded);
+}
+
 std::array<float, kNumMoves> MctsNode::CalculateChildActionScore() const {
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
   float U_common = U_scale() * std::sqrt(std::max<float>(1, N() - 1));
@@ -488,13 +501,9 @@ std::array<float, kNumMoves> MctsNode::CalculateChildActionScore() const {
 MctsNode* MctsNode::MaybeAddChild(Coord c) {
   auto it = children.find(c);
   if (it == children.end()) {
-    auto child = absl::make_unique<MctsNode>(this, c);
-    MctsNode* result = child.get();
-    children[c] = std::move(child);
-    return result;
-  } else {
-    return it->second.get();
+    it = children.emplace(c, absl::make_unique<MctsNode>(this, c)).first;
   }
+  return it->second.get();
 }
 
 MctsNode::TreeStats MctsNode::CalculateTreeStats() const {

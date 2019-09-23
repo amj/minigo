@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -109,9 +110,10 @@ DEFINE_int32(fastplay_readouts, 20,
              "aka 'playout cap oscillation'.\nIf this is set, "
              "'fastplay_frequency' should be nonzero.");
 
-DEFINE_bool(target_pruning, false,
-            "If true, subtract visits from all moves that weren't the best move "
-            "until the uncertainty level compensates.");
+DEFINE_bool(
+    target_pruning, false,
+    "If true, subtract visits from all moves that weren't the best move until "
+    "the uncertainty level compensates.");
 
 // Time control flags.
 DEFINE_double(seconds_per_move, 0,
@@ -232,7 +234,7 @@ void LogEndGameInfo(const Game& game, absl::Duration game_time) {
 class SelfPlayer {
  public:
   explicit SelfPlayer(ModelDescriptor desc)
-      : rnd_(Random::kUniqueSeed, Random::kUniqueStream),
+      : rnd_(FLAGS_seed, Random::kUniqueStream),
         engine_(std::move(desc.engine)),
         model_(std::move(desc.model)) {}
 
@@ -274,7 +276,7 @@ class SelfPlayer {
       absl::MutexLock lock(&mutex_);
       auto model_factory = NewModelFactory(engine_);
       // If the model path contains a pattern, wrap the implementation factory
-      // in a ReloadingDualNetFactory to automatically reload the latest model
+      // in a ReloadingModelFactory to automatically reload the latest model
       // that matches the pattern.
       if (model_.find("%d") != std::string::npos) {
         model_factory = absl::make_unique<ReloadingModelFactory>(
@@ -282,7 +284,7 @@ class SelfPlayer {
       }
       // Note: it's more efficient to perform the reload wrapping before the
       // batch wrapping because this way, we only need to reload the single
-      // implementation DualNet when a new model is found. If we performed batch
+      // implementation Model when a new model is found. If we performed batch
       // wrapping before reload wrapping, the reload code would need to update
       // all the BatchingModel wrappers.
       batcher_ =
@@ -416,6 +418,13 @@ class SelfPlayer {
         readouts = (fastplay ? thread_options.player_options.fastplay_readouts
                       : thread_options.player_options.num_readouts);
 
+        if (thread_options.player_options.fastplay_frequency > 0 && !fastplay) {
+          // We're using playout count oscillation and doing a slow play.
+          // Clear the root's search state so that the injected noise has a
+          // more significant effect.
+          player->root()->ClearChildren();
+        }
+
         // Choose the move to play, optionally adding noise.
         Coord move = Coord::kInvalid;
         {
@@ -508,7 +517,7 @@ class SelfPlayer {
 
       // Write the outputs.
       auto now = absl::Now();
-      auto output_name = GetOutputName(now, thread_id);
+      auto output_name = GetOutputName(game_id_++);
 
       bool is_holdout;
       {
@@ -602,6 +611,8 @@ class SelfPlayer {
   WinStats win_stats_ GUARDED_BY(&mutex_);
 
   uint64_t flags_timestamp_ = 0;
+
+  std::atomic<size_t> game_id_{0};
 
   const std::string engine_;
   const std::string model_;
