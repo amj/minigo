@@ -125,11 +125,24 @@ MctsNode::MctsNode(MctsNode* parent, Coord move)
   }
 }
 
-Coord MctsNode::GetMostVisitedMove() const {
+Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
   // Find the set of moves with the largest N.
   inline_vector<Coord, kNumMoves> moves;
+  std::array<Color, kN * kN> out_of_bounds;
+
+  if (restrict_in_bensons) {
+    out_of_bounds = position.CalculatePassAliveRegions();
+  } else {
+    for (auto& x : out_of_bounds) {
+      x = Color::kEmpty;
+    }
+  }
+
   int best_N = -1;
   for (int i = 0; i < kNumMoves; ++i) {
+    if (out_of_bounds[i] != Color::kEmpty) {
+      continue;
+    }
     int cn = child_N(i);
     if (cn >= best_N) {
       if (cn > best_N) {

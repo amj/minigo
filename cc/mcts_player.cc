@@ -110,7 +110,8 @@ bool MctsPlayer::UndoMove() {
   return true;
 }
 
-Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
+Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise,
+                              bool restrict_in_bensons) {
   auto start = absl::Now();
 
   if (inject_noise) {
@@ -141,7 +142,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
   }
 
   // Pick the move before altering the tree for training targets.
-  auto c = PickMove();
+  auto c = PickMove(restrict_in_bensons);
 
   // After picking the move, destructively adjust the visit counts
   // according to whatever flag-controlled scheme.
@@ -152,9 +153,9 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise) {
   return c;
 }
 
-Coord MctsPlayer::PickMove() {
+Coord MctsPlayer::PickMove(bool restrict_in_bensons) {
   if (root_->position.n() >= temperature_cutoff_) {
-    return root_->GetMostVisitedMove();
+    return root_->GetMostVisitedMove(restrict_in_bensons);
   }
 
   // Select from the first kN * kN moves (instead of kNumMoves) to avoid

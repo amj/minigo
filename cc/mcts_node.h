@@ -115,7 +115,7 @@ class MctsNode {
 
   // Finds the best move by visit count, N. Ties are broken using the child
   // action score.
-  Coord GetMostVisitedMove() const;
+  Coord GetMostVisitedMove(bool restrict_in_bensons = false) const;
 
   std::string Describe() const;
   std::string MostVisitedPathString() const;
