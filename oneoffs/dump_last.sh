@@ -9,7 +9,7 @@ LAST=`ls -I '*target*' $WORK_DIR/sgf/eval | tail -n 1`
 F=`ls $WORK_DIR/sgf/eval/$LAST | grep "\-50\-" - `
 if [ ! -f "$WORK_DIR/sgf/eval/$LAST/$F" ]; then
 	echo "Waiting for games in $LAST..."
-	sleep 10
+	sleep 20
 fi 
 python oneoffs/dump_game.py $WORK_DIR/sgf/eval/$LAST/$F
 sleep 1
