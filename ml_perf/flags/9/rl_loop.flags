@@ -12,8 +12,8 @@
 
 --train_filter=0.5
 
---bootstrap_target_win_rate=0.1
+--bootstrap_target_win_rate=0.2
 
 --selfplay_num_games=4096
---selfplay_num_games_per_thread=3
+--selfplay_num_games_per_thread=10
 --eval_num_games=100

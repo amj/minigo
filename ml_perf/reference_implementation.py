@@ -293,19 +293,19 @@ async def sample_training_examples(state):
     src_patterns = []
     if state.iter_num < 5:
         window_size = 2
-        sample_frac = 0.999
+        sample_frac = 0.5
     elif state.iter_num < 10:
         window_size = 3
-        sample_frac = 0.999
+        sample_frac = 0.5
     elif state.iter_num < 15:
         window_size = 5
-        sample_frac = 0.7
+        sample_frac = 0.4
     elif state.iter_num < 25:
         window_size = 10
-        sample_frac = 0.35
+        sample_frac = 0.3
     else:
         window_size = 15
-        sample_frac = 0.25
+        sample_frac = 0.2
 
     print("window size / sample frac: ", window_size, sample_frac)
     for d in sorted(dirs, reverse=True)[:window_size]:
