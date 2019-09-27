@@ -20,9 +20,16 @@ import sys
 sys.path.insert(0, '.')  # nopep8
 
 from absl import app
+from absl import flags
 import os
 import re
 import time
+
+FLAGS = flags.FLAGS
+flags.DEFINE_float('sleep_time', 0.0,
+                   'The time to sleep between printing moves.')
+
+
 
 def main(argv):
     # It takes a couple of seconds to import anything from tensorflow, so only
@@ -70,7 +77,7 @@ def main(argv):
         to_play = 'B' if x.position.to_play == 1 else 'W'
         print('{}>> {}: {}\n'.format(
             x.position, to_play, coords.to_gtp(x.next_move)))
-        time.sleep(0.1)
+        time.sleep(FLAGS.sleep_time)
 
     print(result)
     print("Black was: ", player)
