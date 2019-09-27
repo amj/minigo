@@ -306,6 +306,7 @@ TEST_F(MctsPlayerTest, DontPassOnEmptyLosingBoard) {
   MctsPlayer::Options options;
   auto player = CreateBasicPlayer(options);
   auto* root = player->root();
+  // Search a board with one black stone, white to play.
   auto board = TestablePosition(kOneStoneBoard, Color::kWhite);
   player->InitializeGame(board);
   for (int i = 0; i < 80; ++i) {
