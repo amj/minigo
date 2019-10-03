@@ -11,6 +11,8 @@
 --disable_resign_pct=1.0
 --resign_threshold=-0.99
 --virtual_losses=2
+--dirichlet_alpha=0.03
+--noise_mix=0.25
 ### --target_pruning=1
 
 # Device-specific selfplay flags.
