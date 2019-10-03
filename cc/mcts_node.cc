@@ -142,7 +142,7 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
   int best_N = -1;
   for (int i = 0; i < kNumMoves; ++i) {
     if ((i != Coord::kPass) && (out_of_bounds[i] != Color::kEmpty)) {
-        continue;
+      continue;
     }
     int cn = child_N(i);
     if (cn >= best_N) {
@@ -180,26 +180,23 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
   return c;
 }
 
-void MctsNode::ReshapeFinalVisits() {
-  Coord best = GetMostVisitedMove();
+void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
+  Coord best = GetMostVisitedMove(restrict_in_bensons);
   auto pass_alive_regions = position.CalculatePassAliveRegions();
   float U_common = U_scale() * std::sqrt(1.0f + N());
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
   float best_cas =
       CalculateSingleMoveChildActionScore(to_play, U_common, uint16_t(best));
 
-  // int total = 0;
+  bool any = false; // Track if any move has visits after pruning.
+
   // We explored this child with uncertainty about its value.  Now, after
   // searching, we change the visit count to reflect how many visits we would
   // have given it with our newer understanding of its regret relative to our
   // best move.
   for (int i = 0; i < kNumMoves; ++i) {
-    // Remove visits in pass alive areas.
-    if ((i != Coord::kPass) && (pass_alive_regions[i] != Color::kEmpty)) {
-      edges[i].N = 0;
-      continue;
-    }
     if (i == uint16_t(best)) {
+      MG_CHECK(edges[i].N > 0);
       continue;
     }
 
@@ -212,10 +209,21 @@ void MctsNode::ReshapeFinalVisits() {
                static_cast<int>(-1 * (U_scale() * child_P(i) * std::sqrt(N())) /
                                 ((child_Q(i) * to_play) - best_cas)) -
                    1));
-    // total += edges[i].N - new_N;
     edges[i].N = new_N;
+
+    // Remove visits in pass alive areas.
+    if ((i != Coord::kPass) && (pass_alive_regions[i] != Color::kEmpty)) {
+      edges[i].N = 0;
+    }
+    if (edges[i].N > 0) {
+      any = true;
+    }
   }
-  // MG_LOG(INFO) << "Pruned " << total << " visits.";
+
+  // If all visits were in bensons regions, put a visit on pass.
+  if (!any) {
+    edges[Coord::kPass].N = 1;
+  }
 }
 
 std::array<MctsNode::ChildInfo, kNumMoves> MctsNode::CalculateRankedChildInfo()
@@ -348,9 +356,6 @@ MctsNode* MctsNode::SelectLeaf() {
 
     auto child_action_score = node->CalculateChildActionScore();
     auto best_move = ArgMax(child_action_score);
-    if (!node->position.legal_move(best_move)) {
-      best_move = Coord::kPass;
-    }
     node = node->MaybeAddChild(best_move);
   }
 }

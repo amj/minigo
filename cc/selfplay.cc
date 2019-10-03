@@ -430,12 +430,6 @@ class SelfPlayer {
         {
           WTF_SCOPE0("SuggestMove");
           move = player->SuggestMove(readouts, !fastplay, num_passes > 5);
-          if (move == Coord::kPass) {
-            num_passes++;
-            if (fastplay == true) {
-              move = player->SuggestMove(thread_options.player_options.num_readouts, true);
-            }
-          }
         }
 
         // Log tree search stats.

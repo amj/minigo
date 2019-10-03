@@ -148,7 +148,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise,
   // After picking the move, destructively adjust the visit counts
   // according to whatever flag-controlled scheme.
   if (options_.target_pruning && inject_noise) {
-    root_->ReshapeFinalVisits();
+    root_->ReshapeFinalVisits(restrict_in_bensons);
   }
 
   return c;
