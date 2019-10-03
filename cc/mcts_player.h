@@ -133,7 +133,7 @@ class MctsPlayer {
   // Plays the move at point c.
   // If game is non-null, adds a new move to the game's move history and sets
   // the game over state if appropriate.
-  bool PlayMove(Coord c);
+  bool PlayMove(Coord c, bool is_trainable=false);
 
   // Moves the root_ node up to its parent, popping the last move off the game
   // history but preserving the game tree.

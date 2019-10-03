@@ -477,11 +477,7 @@ class SelfPlayer {
         // Play the chosen move.
         {
           WTF_SCOPE0("PlayMove");
-          MG_CHECK(player->PlayMove(move));
-        }
-
-        if (!fastplay && move != Coord::kResign) {
-          (*game).MarkLastMoveAsTrainable();
+          MG_CHECK(player->PlayMove(move, !fastplay)); // !fastplay == is_trainable
         }
 
         // Log information about the move played.

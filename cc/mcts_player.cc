@@ -142,16 +142,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise,
     return Coord::kResign;
   }
 
-  // Pick the move before altering the tree for training targets.
-  auto c = PickMove(restrict_in_bensons);
-
-  // After picking the move, destructively adjust the visit counts
-  // according to whatever flag-controlled scheme.
-  if (options_.target_pruning && inject_noise) {
-    root_->ReshapeFinalVisits(restrict_in_bensons);
-  }
-
-  return c;
+  return PickMove(restrict_in_bensons);
 }
 
 Coord MctsPlayer::PickMove(bool restrict_in_bensons) {
@@ -297,7 +288,7 @@ std::string MctsPlayer::GetModelsUsedForInference() const {
   return absl::StrJoin(parts, ", ");
 }
 
-bool MctsPlayer::PlayMove(Coord c) {
+bool MctsPlayer::PlayMove(Coord c, bool is_trainable) {
   if (root_->game_over()) {
     MG_LOG(ERROR) << "Can't play move " << c << ", game is over";
     return false;
@@ -322,7 +313,16 @@ bool MctsPlayer::PlayMove(Coord c) {
     return false;
   }
 
+  // Adjust the visits before adding the move's search_pi to the Game.
+  if (is_trainable && options_.target_pruning) {
+    root_->ReshapeFinalVisits(options_.restrict_in_bensons);
+  }
+
   UpdateGame(c);
+
+  if (is_trainable && c != Coord::kResign) {
+    game_->MarkLastMoveAsTrainable();
+  }
 
   root_ = root_->MaybeAddChild(c);
   // Don't need to keep the parent's children around anymore because we'll

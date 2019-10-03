@@ -139,7 +139,7 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
     }
   }
 
-  int best_N = -1;
+  int best_N = 0;
   for (int i = 0; i < kNumMoves; ++i) {
     if ((i != Coord::kPass) && (out_of_bounds[i] != Color::kEmpty)) {
       continue;
@@ -154,7 +154,9 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
     }
   }
 
-  MG_CHECK(!moves.empty());
+  if (moves.empty()) {
+    return Coord::kPass;
+  }
 
   // If there's only one move with the largest N, we're done.
   if (moves.size() == 1) {
@@ -181,7 +183,11 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
 }
 
 void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
-  Coord best = GetMostVisitedMove(restrict_in_bensons);
+  // Since we aren't actually disallowing *reads* of bensons moves, only their
+  // selection, we get the most visited move regardless of bensons status and
+  // reshape based on its action score.
+  Coord best = GetMostVisitedMove(false);
+  MG_CHECK(edges[best].N > 0);
   auto pass_alive_regions = position.CalculatePassAliveRegions();
   float U_common = U_scale() * std::sqrt(1.0f + N());
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
@@ -195,8 +201,18 @@ void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
   // have given it with our newer understanding of its regret relative to our
   // best move.
   for (int i = 0; i < kNumMoves; ++i) {
+    // Remove visits in pass alive areas.
+    if (restrict_in_bensons && (i != Coord::kPass) &&
+        (pass_alive_regions[i] != Color::kEmpty)) {
+      edges[i].N = 0;
+      continue;
+    }
+
+    // Skip the best move; it has the highest action score.
     if (i == uint16_t(best)) {
-      MG_CHECK(edges[i].N > 0);
+      if (edges[i].N > 0) {
+        any = true;
+      }
       continue;
     }
 
@@ -207,14 +223,9 @@ void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
         0, std::min(
                static_cast<int>(child_N(i)),
                static_cast<int>(-1 * (U_scale() * child_P(i) * std::sqrt(N())) /
-                                ((child_Q(i) * to_play) - best_cas)) -
-                   1));
+                                ((child_Q(i) * to_play) - best_cas))));
     edges[i].N = new_N;
 
-    // Remove visits in pass alive areas.
-    if ((i != Coord::kPass) && (pass_alive_regions[i] != Color::kEmpty)) {
-      edges[i].N = 0;
-    }
     if (edges[i].N > 0) {
       any = true;
     }
