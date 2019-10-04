@@ -4,5 +4,6 @@
 
 # --num_readouts=240
 --num_readouts=100
+--value_init_penalty=0.1
 --fastplay_frequency=0
 --resign_enabled=false

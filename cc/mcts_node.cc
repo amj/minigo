@@ -128,6 +128,7 @@ MctsNode::MctsNode(MctsNode* parent, Coord move)
 Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
   // Find the set of moves with the largest N.
   inline_vector<Coord, kNumMoves> moves;
+  // CalculatePassAlive does not include the kPass point.
   std::array<Color, kN * kN> out_of_bounds;
 
   if (restrict_in_bensons) {
@@ -140,8 +141,8 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
 
   int best_N = -1;
   for (int i = 0; i < kNumMoves; ++i) {
-    if (out_of_bounds[i] != Color::kEmpty) {
-      continue;
+    if ((i != Coord::kPass) && (out_of_bounds[i] != Color::kEmpty)) {
+        continue;
     }
     int cn = child_N(i);
     if (cn >= best_N) {
@@ -160,7 +161,7 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
     return moves[0];
   }
 
-  // Otherwise, break score using the child action score.
+  // Otherwise, break tie using the child action score.
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
   float U_common = U_scale() * std::sqrt(1.0f + N());
 
@@ -179,20 +180,21 @@ Coord MctsNode::GetMostVisitedMove(bool restrict_in_bensons) const {
   return c;
 }
 
-void MctsNode::ReshapeFinalVisits() {
-  Coord best = GetMostVisitedMove();
+void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
+  Coord best = GetMostVisitedMove(restrict_in_bensons);
+  auto pass_alive_regions = position.CalculatePassAliveRegions();
   float U_common = U_scale() * std::sqrt(1.0f + N());
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
   float best_cas =
       CalculateSingleMoveChildActionScore(to_play, U_common, uint16_t(best));
 
-  // int total = 0;
   // We explored this child with uncertainty about its value.  Now, after
   // searching, we change the visit count to reflect how many visits we would
   // have given it with our newer understanding of its regret relative to our
   // best move.
   for (int i = 0; i < kNumMoves; ++i) {
     if (i == uint16_t(best)) {
+      MG_CHECK(edges[i].N > 0);
       continue;
     }
 
@@ -207,8 +209,24 @@ void MctsNode::ReshapeFinalVisits() {
                    1));
     // total += edges[i].N - new_N;
     edges[i].N = new_N;
+
+    // Remove visits in pass alive areas.
+    if ((i != Coord::kPass) && (pass_alive_regions[i] != Color::kEmpty)) {
+      edges[i].N = 0;
+      continue;
+    }
   }
-  // MG_LOG(INFO) << "Pruned " << total << " visits.";
+
+  bool any = false;
+  for (int i = 0; i < kNumMoves; ++i) {
+    if (edges[i].N > 0) {
+      any = true;
+      break;
+    }
+  }
+  if (!any) {
+    edges[Coord::kPass].N = 1;
+  }
 }
 
 std::array<MctsNode::ChildInfo, kNumMoves> MctsNode::CalculateRankedChildInfo()
@@ -246,7 +264,7 @@ std::string MctsNode::Describe() const {
   for (const auto& e : edges) {
     child_N_sum += e.N;
   }
-  for (int rank = 0; rank < 15; ++rank) {
+  for (int rank = 0; rank < kNumMoves; ++rank) {
     Coord c = sorted_child_info[rank].c;
     float soft_N = child_N(c) / child_N_sum;
     float p_delta = soft_N - child_P(c);
@@ -334,16 +352,18 @@ MctsNode* MctsNode::SelectLeaf() {
     }
     // HACK: if last move was a pass, always investigate double-pass first
     // to avoid situations where we auto-lose by passing too early.
+    /*
     if (node->move == Coord::kPass && node->child_N(Coord::kPass) == 0) {
       node = node->MaybeAddChild(Coord::kPass);
       continue;
     }
+    */
 
     auto child_action_score = node->CalculateChildActionScore();
     auto best_move = ArgMax(child_action_score);
-    if (!node->position.legal_move(best_move)) {
+    /*if (!node->position.legal_move(best_move)) {
       best_move = Coord::kPass;
-    }
+    }*/
     node = node->MaybeAddChild(best_move);
   }
 }

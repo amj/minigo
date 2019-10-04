@@ -351,7 +351,6 @@ TEST(MctsNodeTest, DontTraverseUnexpandedChild) {
   MctsNode::EdgeStats root_stats;
   auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
   MctsNode root(&root_stats, board);
-  root_stats.N = 5;
   root.SelectLeaf()->IncorporateResults(0.0, probs, 0, &root);
 
   auto* leaf1 = root.SelectLeaf();
@@ -423,6 +422,27 @@ TEST(MctsNodeTest, GetMostVisitedBensonRestriction) {
   EXPECT_NE(Coord(0), root.GetMostVisitedMove(true));
   EXPECT_NE(root.GetMostVisitedMove(false), root.GetMostVisitedMove(true));
 }
+
+
+// Pass is still a valid choice, with or without removing pass-alive areas.
+TEST(MctsNodeTest, BensonRestrictionStillPasses) {
+  MctsNode::EdgeStats root_stats;
+  auto board = TestablePosition(kAlmostDoneBoard, Color::kWhite);
+  MctsNode root(&root_stats, board);
+
+  for (int i = 0; i < kNumMoves; ++i) {
+    if (root.position.ClassifyMove(i) != Position::MoveType::kIllegal) {
+      root.edges[i].N = 10;
+    }
+  }
+  root.edges[Coord::kPass].N = 100;
+
+
+  EXPECT_EQ(Coord::kPass, root.GetMostVisitedMove(false));
+  EXPECT_EQ(Coord::kPass, root.GetMostVisitedMove(true));
+}
+
+
 
 // Verifies that even when one move is hugely more likely than all the others,
 // SelectLeaf will eventually start exploring other moves given enough

@@ -153,7 +153,7 @@ class MctsNode {
   void ClearChildren();
 
   // Adjust the visit counts via whatever hairbrained scheme.
-  void ReshapeFinalVisits();
+  void ReshapeFinalVisits(bool restrict_in_bensons = false);
 
   std::array<float, kNumMoves> CalculateChildActionScore() const;
 

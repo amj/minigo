@@ -43,7 +43,7 @@ constexpr float kDefaultKomi = 7.5;
 
 // static constexpr float kPuct = 2.50;
 static constexpr float kUct_base = 19652;
-static constexpr float kUct_init = 0.70;
+static constexpr float kUct_init = 2.00;
 
 // Maximum number of moves we look back in history when preparing input for an
 // inference.

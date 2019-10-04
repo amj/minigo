@@ -291,21 +291,14 @@ async def sample_training_examples(state):
 
     dirs = [x.path for x in os.scandir(fsdb.selfplay_dir()) if x.is_dir()]
     src_patterns = []
+    
+    window_size = 10
     if state.iter_num < 5:
-        window_size = 2
         sample_frac = 0.5
     elif state.iter_num < 10:
-        window_size = 3
-        sample_frac = 0.5
-    elif state.iter_num < 15:
-        window_size = 5
         sample_frac = 0.4
-    elif state.iter_num < 25:
-        window_size = 10
-        sample_frac = 0.3
     else:
-        window_size = 15
-        sample_frac = 0.2
+        sample_frac = 0.3
 
     print("window size / sample frac: ", window_size, sample_frac)
     for d in sorted(dirs, reverse=True)[:window_size]:
@@ -354,7 +347,7 @@ async def bootstrap_selfplay(state):
         'bazel-bin/cc/selfplay',
         '--flagfile={}'.format(os.path.join(FLAGS.flags_dir,
                                             'bootstrap.flags')),
-        '--num_games={}'.format(FLAGS.selfplay_num_games),
+        #'--num_games={}'.format(FLAGS.selfplay_num_games),
         '--parallel_games=32',
         '--model=random:0,0.4:0.4',
         '--output_dir={}/0'.format(output_dir),
@@ -458,7 +451,6 @@ async def train(state, tf_records):
 
 
 async def train_eval(state, tf_records):
-
     await train(state, tf_records)
     return await evaluate_trained_model(state)
 
@@ -572,7 +564,7 @@ def rl_loop():
                 # The tranined model won a sufficient number of games against
                 # the target. Create the checkpoint that will be used to start
                 # the real benchmark and exit.
-                create_checkpoint(state)
+                create_checkpoint()
                 break
             prev_win_rate_vs_target = win_rate_vs_target
 

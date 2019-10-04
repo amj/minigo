@@ -64,6 +64,13 @@ tensorflow::Example MakeTfExample(const DualNet::BoardFeatures& features,
   dst_features["x"] = MakeBytesFeature(ConvertToBytes(features));
 
   // pi is expected to be a float array serialized as bytes.
+  float most = 0;
+  for (int i = 0; i < kNumMoves; i++){
+    if(pi[i] > most) {
+      most = pi[i];
+    }
+  }
+  MG_CHECK(most > 0);
   dst_features["pi"] = MakeBytesFeature(pi);
 
   // outcome is a single float.

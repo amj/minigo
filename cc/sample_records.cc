@@ -100,7 +100,7 @@ class ReadThread : public Thread {
           continue;
         }
 
-        if (options_.sample_frac < 1 && rnd_() < options_.sample_frac) {
+        if (options_.sample_frac == 1 || rnd_() < options_.sample_frac) {
           sampled_records_.push_back(std::move(record));
         }
       }
@@ -153,10 +153,8 @@ class WriteThread : public Thread {
       options.compression_type = tensorflow::io::RecordWriterOptions::NONE;
     }
 
-    size_t total_size = 0;
     tensorflow::io::RecordWriter writer(file.get(), options);
     for (const auto& record : records_) {
-      total_size += record.size();
       TF_CHECK_OK(writer.WriteRecord(record));
     }
 

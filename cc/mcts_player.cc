@@ -43,6 +43,7 @@ std::ostream& operator<<(std::ostream& os, const MctsPlayer::Options& options) {
      << " fastplay_frequency:" << options.fastplay_frequency
      << " fastplay_readouts:" << options.fastplay_readouts
      << " target_pruning:" << options.target_pruning
+     << " restrict_in_bensons:" << options.restrict_in_bensons
      << " random_seed:" << options.random_seed << std::flush;
   return os;
 }
@@ -147,7 +148,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise,
   // After picking the move, destructively adjust the visit counts
   // according to whatever flag-controlled scheme.
   if (options_.target_pruning && inject_noise) {
-    root_->ReshapeFinalVisits();
+    root_->ReshapeFinalVisits(restrict_in_bensons);
   }
 
   return c;
@@ -155,7 +156,11 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise,
 
 Coord MctsPlayer::PickMove(bool restrict_in_bensons) {
   if (root_->position.n() >= temperature_cutoff_) {
-    return root_->GetMostVisitedMove(restrict_in_bensons);
+    auto c = root_->GetMostVisitedMove(restrict_in_bensons);
+    if (!root_->position.legal_move(c)) {
+      c = Coord::kPass;
+    }
+    return c;
   }
 
   // Select from the first kN * kN moves (instead of kNumMoves) to avoid

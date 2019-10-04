@@ -195,6 +195,7 @@ void ParseOptionsFromFlags(Game::Options* game_options,
   player_options->fastplay_frequency = FLAGS_fastplay_frequency;
   player_options->fastplay_readouts = FLAGS_fastplay_readouts;
   player_options->target_pruning = FLAGS_target_pruning;
+  player_options->restrict_in_bensons = FLAGS_restrict_in_bensons;
 }
 
 void LogEndGameInfo(const Game& game, absl::Duration game_time) {
@@ -436,14 +437,17 @@ class SelfPlayer {
         Coord move = Coord::kInvalid;
         {
           WTF_SCOPE0("SuggestMove");
-          move = player->SuggestMove(readouts, !fastplay, num_passes > 5);
+          move = player->SuggestMove(readouts, !fastplay, 
+			  (thread_options.player_options.restrict_in_bensons && num_passes > 5));
 	  // reread if fastplay picked pass.
+	  /*
           if (move == Coord::kPass) {
             num_passes++;
             if (move == Coord::kPass && fastplay == true) {
               move = player->SuggestMove(thread_options.player_options.num_readouts, true);
             }
           }
+	  */
         }
 
         // Log tree search stats.
@@ -480,7 +484,7 @@ class SelfPlayer {
             MG_LOG(INFO) << "Move: " << position.n()
                          << " Captures X: " << position.num_captures()[0]
                          << " O: " << position.num_captures()[1];
-            MG_LOG(INFO) << root->Describe();
+            //MG_LOG(INFO) << root->Describe();
             if (inference_cache_ != nullptr) {
               MG_LOG(INFO) << "Inference cache stats: "
                            << inference_cache_->GetStats();
