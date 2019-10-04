@@ -74,14 +74,13 @@ void GtpClient::Run() {
   // lazy initialization, causing the first inference to take substantially
   // longer than subsequent ones, which can interfere with time keeping.
   MG_LOG(INFO) << "Warming up...";
-  Position::Stones stones;
-  Model::Output output;
-  Model::Input input;
-  input.to_play = Color::kBlack;
+  Position position(nullptr, nullptr, Color::kBlack);
+  ModelOutput output;
+  ModelInput input;
   input.sym = symmetry::kIdentity;
-  input.position_history.push_back(&stones);
-  std::vector<const Model::Input*> inputs = {&input};
-  std::vector<Model::Output*> outputs = {&output};
+  input.position_history.push_back(&position);
+  std::vector<const ModelInput*> inputs = {&input};
+  std::vector<ModelOutput*> outputs = {&output};
   player_->model()->RunMany(inputs, &outputs, nullptr);
   MG_LOG(INFO) << "GTP engine ready";
 

@@ -20,8 +20,16 @@ import sys
 sys.path.insert(0, '.')  # nopep8
 
 from absl import app
+from absl import flags
 import os
 import re
+import time
+
+FLAGS = flags.FLAGS
+flags.DEFINE_float('sleep_time', 0.0,
+                   'The time to sleep between printing moves.')
+
+
 
 def main(argv):
     # It takes a couple of seconds to import anything from tensorflow, so only
@@ -47,7 +55,7 @@ def main(argv):
 
     m = re.search(r'RE\[([^]]+)', contents)
     if not m:
-        print('Couldn\'t find RE node')
+        print('No game result found')
         result='unknown'
     else:
         result = m.group(1)
@@ -58,7 +66,6 @@ def main(argv):
         player='unknown'
     else:
         player = m.group(1)
-
 
     # Set the board size and import the Minigo libs.
     os.environ['BOARD_SIZE'] = str(board_size)
@@ -72,9 +79,10 @@ def main(argv):
         to_play = 'B' if x.position.to_play == 1 else 'W'
         print('{}>> {}: {}\n'.format(
             x.position, to_play, coords.to_gtp(x.next_move)))
-        time.sleep(0.1)
+        time.sleep(FLAGS.sleep_time)
+
     print("Result:", result)
-    print("Black was:", player)
+    print("Black was: ", player)
 
 
 if __name__ == '__main__':

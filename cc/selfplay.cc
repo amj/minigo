@@ -439,15 +439,6 @@ class SelfPlayer {
           WTF_SCOPE0("SuggestMove");
           move = player->SuggestMove(readouts, !fastplay, 
 			  (thread_options.player_options.restrict_in_bensons && num_passes > 5));
-	  // reread if fastplay picked pass.
-	  /*
-          if (move == Coord::kPass) {
-            num_passes++;
-            if (move == Coord::kPass && fastplay == true) {
-              move = player->SuggestMove(thread_options.player_options.num_readouts, true);
-            }
-          }
-	  */
         }
 
         // Log tree search stats.
@@ -495,11 +486,7 @@ class SelfPlayer {
         // Play the chosen move.
         {
           WTF_SCOPE0("PlayMove");
-          MG_CHECK(player->PlayMove(move));
-        }
-
-        if (!fastplay && move != Coord::kResign) {
-          (*game).MarkLastMoveAsTrainable();
+          MG_CHECK(player->PlayMove(move, !fastplay)); // !fastplay == is_trainable
         }
 
         // Log information about the move played.
@@ -540,6 +527,7 @@ class SelfPlayer {
           is_holdout ? thread_options.holdout_dir : thread_options.output_dir;
       if (!example_dir.empty()) {
         tf_utils::WriteGameExamples(GetOutputDir(now, example_dir), output_name,
+                                    player->model()->feature_descriptor(),
                                     *game);
       }
       if (use_bigtable) {
@@ -547,6 +535,7 @@ class SelfPlayer {
         const auto& instance_name = bigtable_spec[1];
         const auto& table_name = bigtable_spec[2];
         tf_utils::WriteGameExamples(gcp_project_name, instance_name, table_name,
+                                    player->model()->feature_descriptor(),
                                     *game);
       }
 

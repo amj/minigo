@@ -142,16 +142,7 @@ Coord MctsPlayer::SuggestMove(int new_readouts, bool inject_noise,
     return Coord::kResign;
   }
 
-  // Pick the move before altering the tree for training targets.
-  auto c = PickMove(restrict_in_bensons);
-
-  // After picking the move, destructively adjust the visit counts
-  // according to whatever flag-controlled scheme.
-  if (options_.target_pruning && inject_noise) {
-    root_->ReshapeFinalVisits(restrict_in_bensons);
-  }
-
-  return c;
+  return PickMove(restrict_in_bensons);
 }
 
 Coord MctsPlayer::PickMove(bool restrict_in_bensons) {
@@ -211,7 +202,7 @@ void MctsPlayer::MaybeExpandRoot() {
 
 void MctsPlayer::SelectLeaves(int num_leaves, int max_num_leaves) {
   tree_search_inferences_.clear();
-  Model::Output cached_output;
+  ModelOutput cached_output;
 
   int max_cache_misses = num_leaves * 2;
   int num_selected = 0;
@@ -254,13 +245,12 @@ void MctsPlayer::SelectLeaves(int num_leaves, int max_num_leaves) {
                                          inference_sym, leaf);
 
     auto& input = tree_search_inferences_.back().input;
-    input.to_play = leaf->position.to_play();
     input.sym = inference_sym;
     // TODO(tommadams): add a method to Model that returns the required position
     // history size.
     auto* node = leaf;
     for (int i = 0; i < input.position_history.capacity(); ++i) {
-      input.position_history.push_back(&node->position.stones());
+      input.position_history.push_back(&node->position);
       node = node->parent;
       if (node == nullptr) {
         break;
@@ -298,7 +288,7 @@ std::string MctsPlayer::GetModelsUsedForInference() const {
   return absl::StrJoin(parts, ", ");
 }
 
-bool MctsPlayer::PlayMove(Coord c) {
+bool MctsPlayer::PlayMove(Coord c, bool is_trainable) {
   if (root_->game_over()) {
     MG_LOG(ERROR) << "Can't play move " << c << ", game is over";
     return false;
@@ -323,7 +313,16 @@ bool MctsPlayer::PlayMove(Coord c) {
     return false;
   }
 
+  // Adjust the visits before adding the move's search_pi to the Game.
+  if (is_trainable && options_.target_pruning) {
+    root_->ReshapeFinalVisits(options_.restrict_in_bensons);
+  }
+
   UpdateGame(c);
+
+  if (is_trainable && c != Coord::kResign) {
+    game_->MarkLastMoveAsTrainable();
+  }
 
   root_ = root_->MaybeAddChild(c);
   // Don't need to keep the parent's children around anymore because we'll
@@ -384,7 +383,7 @@ void MctsPlayer::UpdateGame(Coord c) {
   }
 
   // Update the game history.
-  game_->AddMove(root_->position.to_play(), c, root_->position.stones(),
+  game_->AddMove(root_->position.to_play(), c, root_->position,
                  std::move(comment), root_->Q(), search_pi, std::move(models));
 }
 

@@ -21,6 +21,8 @@
 #include "cc/color.h"
 #include "cc/constants.h"
 #include "cc/inline_vector.h"
+#include "cc/model/features.h"
+#include "cc/model/types.h"
 #include "cc/position.h"
 #include "cc/symmetries.h"
 
@@ -28,43 +30,42 @@ namespace minigo {
 
 class Model {
  public:
-  struct Input {
-    // Whether it's Black or White to play.
-    Color to_play;
+  // Fills a batch of inference outputs from policy and value tensors.
+  // Args:
+  //   model_inputs: the same inputs that were passed to `SetFeatures`.
+  //   policy: the policy output from the model.
+  //   value: the value output from the model.
+  //   model_outputs: the model outputs to fill. `model_inputs.size()` must ==
+  //                  `model_outputs.size()`.
+  // Models that produce quantized outputs should unquantize them into
+  // `Tensor<float>` objects before calling GetOutputs.
+  static void GetOutputs(const std::vector<const ModelInput*>& inputs,
+                         const Tensor<float>& policy,
+                         const Tensor<float>& value,
+                         std::vector<ModelOutput*>* outputs);
 
-    // Symmetry to apply to the input features when performing inference.
-    symmetry::Symmetry sym;
-
-    // position_history[0] holds the current position and position_history[i]
-    // holds the position from i moves ago.
-    inline_vector<const Position::Stones*, kMaxPositionHistory>
-        position_history;
-  };
-
-  struct Output {
-    std::array<float, kNumMoves> policy;
-    float value;
-  };
-
-  static void ApplySymmetry(symmetry::Symmetry sym, const Output& src,
-                            Output* dst);
+  static void ApplySymmetry(symmetry::Symmetry sym, const ModelOutput& src,
+                            ModelOutput* dst);
 
   // TODO(tommadams): is there some way to avoid having buffer_count in the base
   // class? All subclasses except BufferedModel set this to 1.
-  Model(std::string name, int buffer_count);
+  Model(std::string name, const FeatureDescriptor& feature_desc,
+        int buffer_count);
   virtual ~Model();
 
   const std::string& name() const { return name_; }
+  const FeatureDescriptor& feature_descriptor() const { return feature_desc_; }
 
   // Returns the ideal number of inference requests in flight for this model.
   int buffer_count() const { return buffer_count_; }
 
-  virtual void RunMany(const std::vector<const Input*>& inputs,
-                       std::vector<Output*>* outputs,
+  virtual void RunMany(const std::vector<const ModelInput*>& inputs,
+                       std::vector<ModelOutput*>* outputs,
                        std::string* model_name) = 0;
 
  private:
   const std::string name_;
+  const FeatureDescriptor feature_desc_;
   const int buffer_count_;
 };
 

@@ -22,7 +22,6 @@
 #include "cc/algorithm.h"
 #include "cc/color.h"
 #include "cc/constants.h"
-#include "cc/dual_net/dual_net.h"
 #include "cc/dual_net/fake_dual_net.h"
 #include "cc/position.h"
 #include "cc/test_utils.h"
@@ -54,6 +53,18 @@ static constexpr char kTtFtwBoard[] = R"(
     X.XXXXXXX
     XXXXXXXXX)";
 
+static constexpr char kOneStoneBoard[] = R"(
+    .........
+    .........
+    .........
+    .........
+    ....X....
+    .........
+    .........
+    .........
+    .........)";
+
+
 class TestablePlayer : public MctsPlayer {
  public:
   explicit TestablePlayer(Game* game, const MctsPlayer::Options& player_options)
@@ -74,10 +85,10 @@ class TestablePlayer : public MctsPlayer {
   using MctsPlayer::TreeSearch;
   using MctsPlayer::UndoMove;
 
-  Model::Output Run(const Model::Input& input) {
-    Model::Output output;
-    std::vector<const Model::Input*> inputs = {&input};
-    std::vector<Model::Output*> outputs = {&output};
+  ModelOutput Run(const ModelInput& input) {
+    ModelOutput output;
+    std::vector<const ModelInput*> inputs = {&input};
+    std::vector<ModelOutput*> outputs = {&output};
     model()->RunMany(inputs, &outputs, nullptr);
     return output;
   }
@@ -98,9 +109,8 @@ class MctsPlayerTest : public ::testing::Test {
     auto player =
         absl::make_unique<TestablePlayer>(game_.get(), player_options);
     auto* first_node = player->root()->SelectLeaf();
-    Model::Input input;
-    input.to_play = Color::kBlack;
-    input.position_history.push_back(&player->root()->position.stones());
+    ModelInput input;
+    input.position_history.push_back(&player->root()->position);
     auto output = player->Run(input);
     first_node->IncorporateResults(0.0, output.policy, output.value,
                                    player->root());
@@ -288,6 +298,49 @@ TEST_F(MctsPlayerTest, ParallelTreeSearch) {
 
   // No virtual losses should be pending.
   EXPECT_EQ(0, CountPendingVirtualLosses(root));
+}
+
+TEST_F(MctsPlayerTest, DontPassOnEmptyLosingBoard) {
+  MctsPlayer::Options options;
+  auto player = CreateBasicPlayer(options);
+  auto* root = player->root();
+  // Search a board with one black stone, white to play.
+  auto board = TestablePosition(kOneStoneBoard, Color::kWhite);
+  player->InitializeGame(board);
+  for (int i = 0; i < 80; ++i) {
+    player->TreeSearch(8);
+  }
+
+  // Expect pass-pass to have been checked.
+  auto it = root->children.find(Coord::kPass);
+  EXPECT_NE(it, root->children.end());
+  auto pass = it->second.get();
+  EXPECT_GT(pass->child_N(Coord::kPass), 0);
+
+  // Expect the first pass to be bad.
+  EXPECT_GT(root->child_Q(Coord::kPass), 0);
+  EXPECT_GT(root->child_N(Coord::kPass), 0);
+  auto best_move = ArgMax(root->edges, MctsNode::CmpN);
+  EXPECT_NE(Coord::kPass, best_move);
+
+  // Now search an empty board, black to play.
+  board = TestablePosition("", Color::kBlack);
+  player->InitializeGame(board);
+  for (int i = 0; i < 80; ++i) {
+    player->TreeSearch(8);
+  }
+
+  // Expect pass-pass to have been checked.
+  it = root->children.find(Coord::kPass);
+  EXPECT_NE(it, root->children.end());
+  pass = it->second.get();
+  EXPECT_GT(pass->child_N(Coord::kPass), 0);
+
+  // Expect the first pass to be bad.
+  EXPECT_LT(root->child_Q(Coord::kPass), 0);
+  EXPECT_GT(root->child_N(Coord::kPass), 0);
+  best_move = ArgMax(root->edges, MctsNode::CmpN);
+  EXPECT_NE(Coord::kPass, best_move);
 }
 
 TEST_F(MctsPlayerTest, RidiculouslyParallelTreeSearch) {

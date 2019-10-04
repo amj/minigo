@@ -137,7 +137,7 @@ class MctsPlayer {
   // Plays the move at point c.
   // If game is non-null, adds a new move to the game's move history and sets
   // the game over state if appropriate.
-  bool PlayMove(Coord c);
+  bool PlayMove(Coord c, bool is_trainable=false);
 
   // Moves the root_ node up to its parent, popping the last move off the game
   // history but preserving the game tree.
@@ -288,13 +288,13 @@ class MctsPlayer {
     symmetry::Symmetry canonical_sym;
     symmetry::Symmetry inference_sym;
     MctsNode* leaf;
-    Model::Input input;
-    Model::Output output;
+    ModelInput input;
+    ModelOutput output;
   };
 
   std::vector<TreeSearchInference> tree_search_inferences_;
-  std::vector<const Model::Input*> input_ptrs_;
-  std::vector<Model::Output*> output_ptrs_;
+  std::vector<const ModelInput*> input_ptrs_;
+  std::vector<ModelOutput*> output_ptrs_;
 
   TreeSearchCallback tree_search_cb_ = nullptr;
 

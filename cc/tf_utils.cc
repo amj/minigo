@@ -19,9 +19,9 @@
 #include <memory>
 
 #include "cc/constants.h"
-#include "cc/dual_net/dual_net.h"
 #include "cc/file/path.h"
 #include "cc/file/utils.h"
+#include "cc/model/model.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -36,32 +36,32 @@ namespace tf_utils {
 
 namespace {
 
-template <typename T, size_t N>
-std::array<uint8_t, N> ConvertToBytes(const std::array<T, N>& src) {
-  std::array<uint8_t, N> dst;
-  std::copy(src.begin(), src.end(), dst.begin());
-  return dst;
-}
-
-template <typename T>
-tensorflow::Feature MakeBytesFeature(const T& data) {
+tensorflow::Feature MakeBytesFeature(const Tensor<uint8_t>& src) {
+  int size = src.n * src.h * src.w * src.c;
   tensorflow::Feature feature;
   feature.mutable_bytes_list()->add_value(
-      reinterpret_cast<const void*>(data.data()),
-      sizeof(typename T::value_type) * data.size());
+      reinterpret_cast<const void*>(src.data), size);
+  return feature;
+}
+
+template <size_t N>
+tensorflow::Feature MakeBytesFeature(const std::array<float, N>& data) {
+  tensorflow::Feature feature;
+  feature.mutable_bytes_list()->add_value(
+      reinterpret_cast<const void*>(data.data()), sizeof(float) * data.size());
   return feature;
 }
 
 // Converts board features, and the pi & value outputs of MTCS to a tensorflow
 // example proto.
-tensorflow::Example MakeTfExample(const DualNet::BoardFeatures& features,
+tensorflow::Example MakeTfExample(const Tensor<uint8_t>& features,
                                   const std::array<float, kNumMoves>& pi,
                                   float outcome) {
   tensorflow::Example example;
   auto& dst_features = *example.mutable_features()->mutable_feature();
 
   // The input features are expected to be uint8 bytes.
-  dst_features["x"] = MakeBytesFeature(ConvertToBytes(features));
+  dst_features["x"] = MakeBytesFeature(features);
 
   // pi is expected to be a float array serialized as bytes.
   float most = 0;
@@ -102,30 +102,40 @@ void WriteTfExamples(const std::string& path,
 
 }  // namespace
 
-std::vector<tensorflow::Example> MakeExamples(const Game& game) {
+std::vector<tensorflow::Example> MakeExamples(
+    const FeatureDescriptor& feature_desc, const Game& game) {
   // Write the TensorFlow examples.
   std::vector<tensorflow::Example> examples;
   examples.reserve(game.num_moves());
-  DualNet::BoardFeatures features;
-  std::vector<const Position::Stones*> recent_positions;
+
+  BoardFeatureBuffer<uint8_t> features_buffer;
+  Tensor<uint8_t> features(1, kN, kN, feature_desc.num_planes,
+                           features_buffer.data());
+
   for (size_t i = 0; i < game.moves().size(); ++i) {
     const auto* move = game.moves()[i].get();
-    game.GetStoneHistory(i, DualNet::kMoveHistory, &recent_positions);
-    DualNet::SetFeatures(recent_positions, move->color, &features);
-    if (move->trainable) {
-      examples.push_back(
-          MakeTfExample(features, move->search_pi, game.result()));
+    if (!move->trainable) {
+      continue;
     }
+
+    ModelInput input;
+    input.sym = symmetry::kIdentity;
+    game.GetPositionHistory(i, kMaxPositionHistory, &input.position_history);
+
+    feature_desc.set_bytes({&input}, &features);
+    examples.push_back(MakeTfExample(features, move->search_pi, game.result()));
   }
   return examples;
 }
 
 void WriteGameExamples(const std::string& output_dir,
-                       const std::string& output_name, const Game& game) {
+                       const std::string& output_name,
+                       const FeatureDescriptor& feature_desc,
+                       const Game& game) {
   MG_CHECK(file::RecursivelyCreateDir(output_dir));
   auto output_path = file::JoinPath(output_dir, output_name + ".tfrecord.zz");
 
-  auto examples = MakeExamples(game);
+  auto examples = MakeExamples(feature_desc, game);
   WriteTfExamples(output_path, examples);
 }
 

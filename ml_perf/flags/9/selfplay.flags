@@ -4,6 +4,7 @@
 # the RL loop.
 
 --num_readouts=100
+--dirichlet_alpha=0.03
 --noise_mix=0.25
 --fastplay_frequency=0.5
 --fastplay_readouts=30
