@@ -1,7 +1,7 @@
 --flags_dir=ml_perf/flags/9/
 --checkpoint_dir=ml_perf/checkpoint/9/
 
---iterations=75
+--iterations=50
 --gating_win_rate=0.10
 --window_size=10
 --engine=tf
@@ -12,8 +12,11 @@
 
 --train_filter=0.5
 
---bootstrap_target_win_rate=0.2
+--bootstrap_target_win_rate=0.5
 
---selfplay_num_games=8192
+--selfplay_num_games=4200
 --selfplay_num_games_per_thread=5
 --eval_num_games=100
+
+--use_extra_features=true
+--validate

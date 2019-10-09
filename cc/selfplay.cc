@@ -356,8 +356,6 @@ class SelfPlayer {
           << "Bigtable output must be of the form: project,instance,table";
       return;
     }
-	int switched=0;
-	int not_switched=0;
 
     for (;;) {
       std::unique_ptr<Game> game;
@@ -551,7 +549,6 @@ class SelfPlayer {
       }
     }
 
-    MG_LOG(INFO) << "Switched / Not switched: " << switched << " / " << not_switched;
     MG_LOG(INFO) << "Thread " << thread_id << " stopping";
   }
 

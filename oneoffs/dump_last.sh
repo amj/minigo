@@ -11,16 +11,16 @@ if [ ! -f "$WORK_DIR/sgf/eval/$LAST/$F" ]; then
 	echo "Waiting for games in $LAST..."
 	sleep 20
 fi 
-python oneoffs/dump_game.py $WORK_DIR/sgf/eval/$LAST/$F
+python oneoffs/dump_game.py --sleep_time=0.1 $WORK_DIR/sgf/eval/$LAST/$F
 sleep 1
 F=`ls $WORK_DIR/sgf/eval/$LAST | grep "\-30\-" - `
-python oneoffs/dump_game.py $WORK_DIR/sgf/eval/$LAST/$F
+python oneoffs/dump_game.py --sleep_time=0.1 $WORK_DIR/sgf/eval/$LAST/$F
 sleep 1
 F=`ls $WORK_DIR/sgf/eval/$LAST | grep "\-80\-" - `
-python oneoffs/dump_game.py $WORK_DIR/sgf/eval/$LAST/$F
+python oneoffs/dump_game.py --sleep_time=0.1 $WORK_DIR/sgf/eval/$LAST/$F
 sleep 1
 F=`ls $WORK_DIR/sgf/eval/$LAST | grep "\-99\-" - `
-python oneoffs/dump_game.py $WORK_DIR/sgf/eval/$LAST/$F
+python oneoffs/dump_game.py --sleep_time=0.1 $WORK_DIR/sgf/eval/$LAST/$F
 
 echo $LAST
 

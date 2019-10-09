@@ -298,11 +298,11 @@ async def sample_training_examples(state):
     
     window_size = 10
     if state.iter_num < 5:
-        sample_frac = 0.5
-    elif state.iter_num < 10:
         sample_frac = 0.4
+    elif state.iter_num < 10:
+        sample_frac = 0.2
     else:
-        sample_frac = 0.3
+        sample_frac = 0.1
 
     print("window size / sample frac: ", window_size, sample_frac)
     for d in sorted(dirs, reverse=True)[:window_size]:
@@ -478,11 +478,13 @@ async def train_eval(state, tf_records):
 async def validate(state):
     dirs = [x.path for x in os.scandir(fsdb.holdout_dir()) if x.is_dir()]
     src_dirs = sorted(dirs, reverse=True)[:FLAGS.window_size]
+    print(dirs)
 
     await run('python3', 'validate.py',
         '--gpu_device_list={}'.format(','.join(FLAGS.train_devices)),
         '--flagfile={}'.format(os.path.join(FLAGS.flags_dir, 'validate.flags')),
         '--work_dir={}'.format(fsdb.working_dir()),
+        '--use_extra_features={}'.format(FLAGS.use_extra_features),
         '--expand_validation_dirs',
               *src_dirs)
 

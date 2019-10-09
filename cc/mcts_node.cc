@@ -223,7 +223,7 @@ void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
         0, std::min(
                static_cast<int>(child_N(i)),
                static_cast<int>(-1 * (U_scale() * child_P(i) * std::sqrt(N())) /
-                                ((child_Q(i) * to_play) - best_cas))));
+                                ((child_Q(i) * to_play) - best_cas)) -1));
     edges[i].N = new_N;
     if (edges[i].N > 0) {
       any = true;
@@ -319,10 +319,14 @@ std::string MctsNode::MostVisitedPathString() const {
   const auto* node = this;
   for (Coord c : MostVisitedPath()) {
     auto it = node->children.find(c);
-    MG_CHECK(it != node->children.end());
-    node = it->second.get();
-    absl::StrAppendFormat(&result, "%s (%d) ==> ", node->move.ToGtp(),
-                          static_cast<int>(node->N()));
+    if (it == node->children.end()) {
+      MG_CHECK(c == Coord::kPass);
+      break;
+    } else {
+      node = it->second.get();
+      absl::StrAppendFormat(&result, "%s (%d) ==> ", node->move.ToGtp(),
+                            static_cast<int>(node->N()));
+    }
   }
   absl::StrAppendFormat(&result, "Q: %0.5f", node->Q());
   return result;
@@ -359,12 +363,12 @@ MctsNode* MctsNode::SelectLeaf() {
     }
     // HACK: if last move was a pass, always investigate double-pass first
     // to avoid situations where we auto-lose by passing too early.
-    /*
+    // /*
     if (node->move == Coord::kPass && node->child_N(Coord::kPass) == 0) {
       node = node->MaybeAddChild(Coord::kPass);
       continue;
     }
-    */
+    // */
 
     auto child_action_score = node->CalculateChildActionScore();
     auto best_move = ArgMax(child_action_score);
