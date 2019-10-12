@@ -30,6 +30,7 @@ import math
 from tqdm import tqdm
 import datetime as dt
 from collections import defaultdict
+from ratings import math_ratings
 
 
 FLAGS = flags.FLAGS
@@ -67,58 +68,15 @@ def extract_pairwise(files):
     return ids, results
 
 
-# TODO extract to common file.
-def compute_ratings(data=None):
-    """ Returns the dict of {model_id: (rating, sigma)}
-    N.B. that `model_id` here is NOT the model number in the run
-
-    'data' is tuples of (winner, loser) model_ids (not model numbers)
-    """
-    if data is None:
-        with sqlite3.connect("ratings.db") as db:
-            data = db.execute("select model_winner, model_loser from wins").fetchall()
-    model_ids = set([d[0] for d in data]).union(set([d[1] for d in data]))
-
-    # Map model_ids to a contiguous range.
-    ordered = sorted(model_ids)
-    new_id = {}
-    for i, m in enumerate(ordered):
-        new_id[m] = i
-
-    # A function to rewrite the model_ids in our pairs
-    def ilsr_data(d):
-        p1, p2 = d
-        p1 = new_id[p1]
-        p2 = new_id[p2]
-        return (p1, p2)
-
-    pairs = list(map(ilsr_data, data))
-    ilsr_param = choix.ilsr_pairwise(
-        len(ordered),
-        pairs,
-        alpha=0.0001,
-        max_iter=800)
-
-    hessian = choix.opt.PairwiseFcts(pairs, penalty=.1).hessian(ilsr_param)
-    std_err = np.sqrt(np.diagonal(np.linalg.inv(hessian)))
-
-    # Elo conversion
-    elo_mult = 400 / math.log(10)
-
-    min_rating = min(ilsr_param)
-    ratings = {}
-
-    for model_id, param, err in zip(ordered, ilsr_param, std_err):
-        ratings[model_id] = (elo_mult * (param - min_rating), elo_mult * err)
-
-    return ratings
-
-
 def fancyprint_ratings(ids, ratings, results=None):
     player_lookup = {v:k for k,v in ids.items()}
+    HEADER = "\n{:<25s}{:>8s}{:>8s}{:>8}{:>7}-{:<8}" 
+    ROW = "{:<25.23s} {:6.0f}  {:6.0f}  {:>6d}  {:>6d}-{:<6d}"
 
     if not results:
-        for pid, (rating, sigma) in sorted(ratings.items(), key=lambda i: i[1][0], reverse=True):
+        for pid, (rating, sigma) in sorted(ratings.items(), 
+                                           key=lambda i: i[1][0], 
+                                           reverse=True):
             print("{:25s}\t{:5.1f}\t{:5.1f}".format(player_lookup[pid], rating, sigma))
         return
 
@@ -127,16 +85,15 @@ def fancyprint_ratings(ids, ratings, results=None):
 
     
     print("\n{} games played among {} players\n".format(len(results), len(ids)))
-    print("\n{:<25s}{:>8s}{:>8s}{:>8}{:^8}{:^8}".format(
-        "Name", "Rating", "Error", "Games", "Wins", "Losses"))
-    max_r = max(v[0] for v in sorted(ratings.values(), key=lambda v: v[0], reverse=True))
-    for pid, (rating, sigma) in sorted(ratings.items(), key=lambda i: i[1][0], reverse=True):
+    print(HEADER.format("Name", "Rating", "Error", "Games", "Win", "Loss"))
+    max_r = max(v[0] for v in ratings.values())
+    for pid, (rating, sigma) in sorted(ratings.items(), 
+                                       key=lambda i: i[1][0],
+                                       reverse=True):
         if rating != max_r:
             rating -= max_r 
-        else:
-            rating = 0
-        print("{:<25.23s} {:6.0f}  {:6.0f}  {:>6d}  {:>6d}  {:<6d}".format(
-            player_lookup[pid], rating, sigma, wins[pid] + losses[pid], wins[pid], losses[pid]))
+        print(ROW.format(player_lookup[pid], rating, sigma,
+            wins[pid] + losses[pid], wins[pid], losses[pid]))
     print("\n")
 
 
@@ -161,7 +118,7 @@ def main(argv):
             print(m)
         print("No SGFs with valid results were found")
         sys.exit(1)
-    rs = compute_ratings(results)
+    rs = math_ratings.compute_ratings(results)
 
     fancyprint_ratings(ids, rs, results)
 
