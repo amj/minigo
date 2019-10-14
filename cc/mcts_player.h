@@ -133,11 +133,11 @@ class MctsPlayer {
   void NewGame();
 
   Coord SuggestMove(int new_readouts, bool inject_noise = false,
-                            bool restrict_in_bensons = false);
+                    bool restrict_in_bensons = false);
   // Plays the move at point c.
   // If game is non-null, adds a new move to the game's move history and sets
   // the game over state if appropriate.
-  bool PlayMove(Coord c, bool is_trainable=false);
+  bool PlayMove(Coord c, bool is_trainable = false);
 
   // Moves the root_ node up to its parent, popping the last move off the game
   // history but preserving the game tree.
@@ -166,11 +166,11 @@ class MctsPlayer {
 
   void SetOptions(const Options& options) { options_ = options; }
 
-  void TreeSearch(int num_leaves);
+  void TreeSearch(int num_leaves, int max_num_reads);
 
   // Protected methods that get exposed for testing.
  protected:
-  Coord PickMove(bool restrict_in_bensons=false);
+  Coord PickMove(bool restrict_in_bensons = false);
 
  private:
   // State that tracks which model is used for each inference.
@@ -202,7 +202,7 @@ class MctsPlayer {
   // canonical symmetry defined; in these cases, GetCanonicalSymmetry returns
   // symmetry::kIdentity.
   symmetry::Symmetry GetCanonicalSymmetry(const MctsNode* node) const {
-    return static_cast<symmetry::Symmetry>(node->canonical_symmetry);
+    return node->canonical_symmetry;
   }
 
   // Returns the symmetry that should be applied to this node's position when
@@ -235,12 +235,12 @@ class MctsPlayer {
   // selected leaves in `tree_search_inferences_`. If the player has an
   // inference cache, this can cause more nodes to be added to the tree when
   // the selected leaves are already in the cache. To limit this, SelectLeaves
-  // will add no more than `max_num_leaves` leaves to the tree.
+  // will stop once the root has `max_num_reads`.
   //
   // In some positions, the model may favor one move so heavily that it
   // overcomes the effects of virtual loss. In this case, SelectLeaves may
   // choose the same leaf multiple times.
-  void SelectLeaves(int num_inferences, int max_num_leaves);
+  void SelectLeaves(int num_inferences, int max_num_reads);
 
   // Run inference on the contents of `inferences_` that was previously
   // populated by a call to SelectLeaves, and propagate the results back up the
@@ -256,9 +256,6 @@ class MctsPlayer {
 
   MctsNode* root_;
   MctsNode game_root_;
-
-  BoardVisitor bv_;
-  GroupVisitor gv_;
 
   Game* game_;
 

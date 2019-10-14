@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <thread>
 #include <utility>
 
@@ -74,7 +75,7 @@ void GtpClient::Run() {
   // lazy initialization, causing the first inference to take substantially
   // longer than subsequent ones, which can interfere with time keeping.
   MG_LOG(INFO) << "Warming up...";
-  Position position(nullptr, nullptr, Color::kBlack);
+  Position position(Color::kBlack);
   ModelOutput output;
   ModelInput input;
   input.sym = symmetry::kIdentity;
@@ -176,7 +177,8 @@ void GtpClient::Ponder() {
   // Remember the number of reads at the root.
   int n = player_->root()->N();
 
-  player_->TreeSearch(player_->options().virtual_losses);
+  player_->TreeSearch(player_->options().virtual_losses,
+                      std::numeric_limits<int>::max());
 
   // Increment the ponder count by difference new and old reads.
   ponder_read_count_ += player_->root()->N() - n;
