@@ -70,8 +70,8 @@ def extract_pairwise(files):
 
 def fancyprint_ratings(ids, ratings, results=None):
     player_lookup = {v:k for k,v in ids.items()}
-    HEADER = "\n{:<25s}{:>8s}{:>8s}{:>8}{:>7}-{:<8}" 
-    ROW = "{:<25.23s} {:6.0f}  {:6.0f}  {:>6d}  {:>6d}-{:<6d}"
+    HEADER = "\n{:<155s}{:>8s}{:>8s}{:>8}{:>7}-{:<8}" 
+    ROW = "{:<155.153s} {:6.0f}  {:6.0f}  {:>6d}  {:>6d}-{:<6d}"
 
     if not results:
         for pid, (rating, sigma) in sorted(ratings.items(), 

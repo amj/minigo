@@ -221,7 +221,7 @@ struct FeatureDescriptor {
 
 using AgzFeatures = Features<StoneFeatures, ToPlayFeature>;
 using ExtraFeatures = Features<StoneFeatures, ToPlayFeature, LibertyFeatures,
-                               WouldCaptureFeatures>;
+			      WouldCaptureFeatures>;
 
 // Maximum number of feature planes used by these features.
 constexpr int kMaxNumFeaturePlanes =

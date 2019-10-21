@@ -200,7 +200,7 @@ std::unique_ptr<Model> TfDualNetFactory::NewModel(
     case 17:
       feature_desc = FeatureDescriptor::Create<AgzFeatures>();
       break;
-    case 20:
+    case 28:
       feature_desc = FeatureDescriptor::Create<ExtraFeatures>();
       break;
     default:

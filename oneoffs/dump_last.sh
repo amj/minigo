@@ -3,7 +3,7 @@
 WORK_DIR=$1
 
 while true; do
-LAST=`ls -I '*target*' $WORK_DIR/sgf/eval | tail -n 1`
+LAST=`ls -I "*target*" $WORK_DIR/sgf/eval | tail -n 1`
 #LAST=`ls $WORK_DIR/sgf/eval | tail -n 1`
 
 F=`ls $WORK_DIR/sgf/eval/$LAST | grep "\-50\-" - `
@@ -26,7 +26,7 @@ echo $LAST
 
 while : 
 do
-		NEXT=`ls -I '*target*' $WORK_DIR/sgf/eval | tail -n 1`
+		NEXT=`ls -I "*target*" $WORK_DIR/sgf/eval | tail -n 1`
 		if [ $NEXT != $LAST ] ; then
 				break
 		fi

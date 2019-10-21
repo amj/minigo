@@ -188,6 +188,9 @@ void MctsNode::ReshapeFinalVisits(bool restrict_in_bensons) {
   // reshape based on its action score.
   Coord best = GetMostVisitedMove(false);
   MG_CHECK(edges[best].N > 0);
+  if (uint16_t(best) == Coord::kPass) {
+	  return;
+  }
   auto pass_alive_regions = position.CalculatePassAliveRegions();
   float U_common = U_scale() * std::sqrt(1.0f + N());
   float to_play = position.to_play() == Color::kBlack ? 1 : -1;
@@ -271,7 +274,7 @@ std::string MctsNode::Describe() const {
   for (const auto& e : edges) {
     child_N_sum += e.N;
   }
-  for (int rank = 0; rank < kNumMoves; ++rank) {
+  for (int rank = 0; rank < 10; ++rank) {
     Coord c = sorted_child_info[rank].c;
     float soft_N = child_N(c) / child_N_sum;
     float p_delta = soft_N - child_P(c);
@@ -363,7 +366,7 @@ MctsNode* MctsNode::SelectLeaf() {
     }
     // HACK: if last move was a pass, always investigate double-pass first
     // to avoid situations where we auto-lose by passing too early.
-    // /*
+     /*
     if (node->move == Coord::kPass && node->child_N(Coord::kPass) == 0) {
       node = node->MaybeAddChild(Coord::kPass);
       continue;

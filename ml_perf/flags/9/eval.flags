@@ -3,7 +3,7 @@
 --flagfile=ml_perf/flags/9/selfplay.flags
 
 # --num_readouts=240
---num_readouts=100
+--num_readouts=120
 --value_init_penalty=0.1
 --virtual_losses=2
 --fastplay_frequency=0

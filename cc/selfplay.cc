@@ -214,7 +214,7 @@ void ParseOptionsFromFlags(Game::Options* game_options,
   player_options->virtual_losses = FLAGS_virtual_losses;
   player_options->random_seed = FLAGS_seed;
   player_options->random_symmetry = FLAGS_random_symmetry;
-  player_options->dirichlet_alpha = FLAGS_dirichlet_alpha * 0.03f * 361 / (kN * kN);
+  player_options->dirichlet_alpha = FLAGS_dirichlet_alpha;
   player_options->num_readouts = FLAGS_num_readouts;
   player_options->fastplay_frequency = FLAGS_fastplay_frequency;
   player_options->fastplay_readouts = FLAGS_fastplay_readouts;

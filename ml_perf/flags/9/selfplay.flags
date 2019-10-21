@@ -3,19 +3,19 @@
 # This flagfile also serves as the base for the boostrap & eval stages of
 # the RL loop.
 
---num_readouts=200
---dirichlet_alpha=0.185
---noise_mix=0.25
+--num_readouts=150
+--dirichlet_alpha=0.135
+--noise_mix=0.30
 --fastplay_frequency=0
 --fastplay_readouts=25
 --value_init_penalty=2.0
 --holdout_pct=0.025
 --disable_resign_pct=1.0
 --resign_threshold=-0.99
---virtual_losses=2
+--virtual_losses=4
 --target_pruning=1
 --restrict_in_bensons=1
 
 # Device-specific selfplay flags.
---cache_size_mb=10240
+#--cache_size_mb=10240
 

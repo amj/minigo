@@ -296,13 +296,13 @@ async def sample_training_examples(state):
     dirs = [x.path for x in os.scandir(fsdb.selfplay_dir()) if x.is_dir()]
     src_patterns = []
     
-    window_size = 10
-    if state.iter_num < 5:
+    window_size = 5
+    if state.iter_num < 3:
+        sample_frac = 0.6
+    elif state.iter_num < 5:
         sample_frac = 0.4
-    elif state.iter_num < 10:
-        sample_frac = 0.2
     else:
-        sample_frac = 0.1
+        sample_frac = 0.2
 
     print("window size / sample frac: ", window_size, sample_frac)
     for d in sorted(dirs, reverse=True)[:window_size]:

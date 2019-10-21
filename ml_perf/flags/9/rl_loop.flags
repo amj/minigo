@@ -3,7 +3,7 @@
 
 --iterations=50
 --gating_win_rate=0.10
---window_size=10
+--window_size=5
 --engine=tf
 
 --train_devices=0
@@ -14,7 +14,7 @@
 
 --bootstrap_target_win_rate=0.5
 
---selfplay_num_games=4200
+--selfplay_num_games=10000
 --selfplay_num_games_per_thread=5
 --eval_num_games=100
 
