@@ -1,4 +1,4 @@
-// Copyright 2018 Google LLC
+// Copyright 2019 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,27 +12,35 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef CC_DUAL_NET_TF_DUAL_NET_H_
-#define CC_DUAL_NET_TF_DUAL_NET_H_
+#ifndef CC_ASYNC_SEMAPHORE_H_
+#define CC_ASYNC_SEMAPHORE_H_
 
-#include <memory>
-#include <string>
-
-#include "cc/model/model.h"
-#include "cc/random.h"
+#include "absl/synchronization/mutex.h"
 
 namespace minigo {
 
-class TfDualNetFactory : public ModelFactory {
+class Semaphore {
  public:
-  explicit TfDualNetFactory(int device);
+  void Post() {
+    absl::MutexLock lock(&mutex_);
+    ++count_;
+  }
 
-  std::unique_ptr<Model> NewModel(const std::string& descriptor) override;
+  void Wait() {
+    absl::MutexLock lock(&mutex_);
+    mutex_.Await(absl::Condition(this, &Semaphore::is_non_zero));
+    --count_;
+  }
 
  private:
-  const int device_;
+  bool is_non_zero() const EXCLUSIVE_LOCKS_REQUIRED(&mutex_) {
+    return count_ != 0;
+  }
+
+  absl::Mutex mutex_;
+  int count_ = 0;
 };
 
 }  // namespace minigo
 
-#endif  // CC_DUAL_NET_TF_DUAL_NET_H_
+#endif  // CC_ASYNC_SEMAPHORE_H_

@@ -96,7 +96,6 @@ class TestablePlayer : public MctsPlayer {
                    nullptr, game, options) {}
 
   using MctsPlayer::mutable_tree;
-  using MctsPlayer::PickMove;
   using MctsPlayer::PlayMove;
   using MctsPlayer::TreeSearch;
   using MctsPlayer::UndoMove;
@@ -129,7 +128,8 @@ class MctsPlayerTest : public ::testing::Test {
     ModelInput input;
     input.position_history.push_back(&player->root()->position);
     auto output = player->Run(input);
-    tree->IncorporateResults(tree->SelectLeaf(), output.policy, output.value);
+    tree->IncorporateResults(tree->SelectLeaf(true), output.policy,
+                             output.value);
     return player;
   }
 
@@ -182,64 +182,6 @@ TEST_F(MctsPlayerTest, TimeRecommendation) {
   EXPECT_GT(0.0001, TimeRecommendation(1000, 5, 100, 0.98));
 }
 
-// Verify that with soft pick disabled, the player will always choose the best
-// move.
-TEST_F(MctsPlayerTest, PickMoveArgMax) {
-  MctsPlayer::Options options;
-  options.soft_pick = false;
-  TestablePlayer player(game_.get(), options);
-
-  auto* root = player.mutable_tree()->SelectLeaf();
-  ASSERT_EQ(player.tree().root(), root);
-
-  std::vector<std::pair<Coord, int>> child_visits = {
-      {{2, 0}, 10},
-      {{1, 0}, 5},
-      {{3, 0}, 1},
-  };
-  for (const auto& p : child_visits) {
-    root->MaybeAddChild(p.first);
-    root->edges[p.first].N = p.second;
-  }
-
-  for (int i = 0; i < 100; ++i) {
-    EXPECT_EQ(Coord(2, 0), player.PickMove());
-  }
-}
-
-// Verify that with soft pick enabled, the player will choose moves early in the
-// game proportionally to their visit count.
-TEST_F(MctsPlayerTest, PickMoveSoft) {
-  MctsPlayer::Options options;
-  options.soft_pick = true;
-  TestablePlayer player(game_.get(), options);
-
-  auto* root = player.mutable_tree()->SelectLeaf();
-  ASSERT_EQ(player.tree().root(), root);
-
-  root->edges[Coord(2, 0)].N = 10;
-  root->edges[Coord(1, 0)].N = 5;
-  root->edges[Coord(3, 0)].N = 1;
-
-  int count_1_0 = 0;
-  int count_2_0 = 0;
-  int count_3_0 = 0;
-  for (int i = 0; i < 1600; ++i) {
-    auto move = player.PickMove();
-    if (move == Coord(1, 0)) {
-      ++count_1_0;
-    } else if (move == Coord(2, 0)) {
-      ++count_2_0;
-    } else {
-      ASSERT_EQ(Coord(3, 0), move);
-      ++count_3_0;
-    }
-  }
-  EXPECT_NEAR(1000, count_2_0, 50);
-  EXPECT_NEAR(500, count_1_0, 50);
-  EXPECT_NEAR(100, count_3_0, 50);
-}
-
 TEST_F(MctsPlayerTest, DontPassIfLosing) {
   auto player = CreateAlmostDonePlayer();
   auto* root = player->root();
@@ -285,50 +227,6 @@ TEST_F(MctsPlayerTest, ParallelTreeSearch) {
 
   // No virtual losses should be pending.
   EXPECT_EQ(0, CountPendingVirtualLosses(root));
-}
-
-TEST_F(MctsPlayerTest, DontPassOnEmptyLosingBoard) {
-  MctsPlayer::Options options;
-  auto player = CreateBasicPlayer(options);
-  // Search a board with one black stone, white to play.
-  auto board = TestablePosition(kOneStoneBoard, Color::kWhite);
-  player->InitializeGame(board);
-  auto* root = player->root();
-  for (int i = 0; i < 80; ++i) {
-    player->TreeSearch(8, std::numeric_limits<int>::max());
-  }
-
-  // Expect pass-pass to have been checked.
-  auto it = root->children.find(Coord::kPass);
-  EXPECT_NE(it, root->children.end());
-  auto pass = it->second.get();
-  EXPECT_GT(pass->child_N(Coord::kPass), 0);
-
-  // Expect the first pass to be bad.
-  EXPECT_GT(root->child_Q(Coord::kPass), 0);
-  EXPECT_GT(root->child_N(Coord::kPass), 0);
-  auto best_move = ArgMax(root->edges, MctsNode::CmpN);
-  EXPECT_NE(Coord::kPass, best_move);
-
-  // Now search an empty board, black to play.
-  board = TestablePosition("", Color::kBlack);
-  player->InitializeGame(board);
-  root = player->root();
-  for (int i = 0; i < 80; ++i) {
-    player->TreeSearch(8, std::numeric_limits<int>::max());
-  }
-
-  // Expect pass-pass to have been checked.
-  it = root->children.find(Coord::kPass);
-  EXPECT_NE(it, root->children.end());
-  pass = it->second.get();
-  EXPECT_GT(pass->child_N(Coord::kPass), 0);
-
-  // Expect the first pass to be bad.
-  EXPECT_LT(root->child_Q(Coord::kPass), 0);
-  EXPECT_GT(root->child_N(Coord::kPass), 0);
-  best_move = ArgMax(root->edges, MctsNode::CmpN);
-  EXPECT_NE(Coord::kPass, best_move);
 }
 
 TEST_F(MctsPlayerTest, RidiculouslyParallelTreeSearch) {
@@ -410,36 +308,6 @@ TEST_F(MctsPlayerTest, TreeSearchFailsafe) {
   EXPECT_EQ(0, CountPendingVirtualLosses(player->root()));
 }
 
-// When presented with a situation where the last move was a pass, and we have
-// to decide whether to pass, it should be the first thing we check, but not
-// more than that.
-TEST_F(MctsPlayerTest, OnlyCheckGameEndOnce) {
-  Position position(Color::kBlack);
-
-  auto player =
-      absl::make_unique<TestablePlayer>(game_.get(), MctsPlayer::Options());
-  player->InitializeGame(position);
-
-  MG_CHECK(player->PlayMove({3, 3}));  // B plays.
-  MG_CHECK(player->PlayMove({3, 4}));  // W plays.
-  MG_CHECK(player->PlayMove({4, 3}));  // B plays.
-
-  // W passes. If B passes too, B would lose by komi..
-  MG_CHECK(player->PlayMove(Coord::kPass));
-
-  auto* root = player->root();
-
-  // Initialize the root
-  player->TreeSearch(1, std::numeric_limits<int>::max());
-  // Explore a child - should be a pass move.
-  player->TreeSearch(1, std::numeric_limits<int>::max());
-  EXPECT_EQ(1, root->child_N(Coord::kPass));
-  player->TreeSearch(1, std::numeric_limits<int>::max());
-
-  // Check that we didn't visit the pass node any more times.
-  EXPECT_EQ(1, root->child_N(Coord::kPass));
-}
-
 TEST_F(MctsPlayerTest, ExtractDataNormalEnd) {
   auto player =
       absl::make_unique<TestablePlayer>(game_.get(), MctsPlayer::Options());
@@ -509,9 +377,10 @@ TEST_F(MctsPlayerTest, UndoMove) {
 // visited (for example, if a model puts all its reads into pass). This is the
 // only case where soft pick should return kPass.
 TEST_F(MctsPlayerTest, SoftPickWithNoVisits) {
+  Random rnd(25323, 1);
   auto player =
       absl::make_unique<TestablePlayer>(game_.get(), MctsPlayer::Options());
-  EXPECT_EQ(Coord::kPass, player->PickMove());
+  EXPECT_EQ(Coord::kPass, player->mutable_tree()->PickMove(&rnd));
 }
 
 }  // namespace

@@ -24,6 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "cc/model/buffered_model.h"
 #include "cc/model/model.h"
+#include "cc/semaphore.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -41,29 +42,6 @@ struct EvaluatedBatch {
   size_t size = 0;
 };
 
-// Why doesn't absl have this already?
-class Semaphore {
- public:
-  void Post() {
-    absl::MutexLock lock(&mutex_);
-    ++count_;
-    cond_var_.Signal();
-  }
-
-  void Wait() {
-    absl::MutexLock lock(&mutex_);
-    while (count_ == 0) {
-      cond_var_.Wait(&mutex_);
-    }
-    --count_;
-  }
-
- private:
-  absl::Mutex mutex_;
-  absl::CondVar cond_var_;
-  int count_ = 0;
-};
-
 // Model implementation whose RunMany method blocks until Notify is called.
 // This is used in tests where multiple BatchingModel clients are running in
 // parallel and we want to control the evaluation order of the implementation
@@ -71,8 +49,7 @@ class Semaphore {
 // WaitingModel also records each RunMany call with its factory.
 class WaitingModel : public Model {
  public:
-  WaitingModel(WaitingModelFactory* factory, std::string model,
-               int buffer_count);
+  WaitingModel(WaitingModelFactory* factory, std::string model);
 
   // Blocks until Notify is called.
   // Each call pushes an EvaluatedBatch instance onto the factory's queue
@@ -116,9 +93,8 @@ class WaitingModelFactory : public ModelFactory {
   std::queue<EvaluatedBatch> batches_ GUARDED_BY(&mutex_);
 };
 
-WaitingModel::WaitingModel(WaitingModelFactory* factory, std::string model_name,
-                           int buffer_count)
-    : Model("Waiting", FeatureDescriptor::Create<AgzFeatures>(), buffer_count),
+WaitingModel::WaitingModel(WaitingModelFactory* factory, std::string model_name)
+    : Model("Waiting", FeatureDescriptor::Create<AgzFeatures>()),
       factory_(factory),
       model_name_(std::move(model_name)) {}
 
@@ -145,7 +121,7 @@ std::unique_ptr<Model> WaitingModelFactory::NewModel(
     const std::string& descriptor) {
   absl::MutexLock lock(&mutex_);
 
-  auto model = absl::make_unique<WaitingModel>(this, descriptor, buffer_count_);
+  auto model = absl::make_unique<WaitingModel>(this, descriptor);
   MG_CHECK(models_.emplace(descriptor, model.get()).second);
   return model;
 }
@@ -190,7 +166,8 @@ class BatchingModelTest : public ::testing::Test {
   void InitFactory(int buffer_count) {
     auto impl = absl::make_unique<WaitingModelFactory>(buffer_count);
     model_factory_ = impl.get();
-    batcher_ = absl::make_unique<BatchingModelFactory>(std::move(impl));
+    batcher_ =
+        absl::make_unique<BatchingModelFactory>(std::move(impl), buffer_count);
   }
 
   std::unique_ptr<Model> NewModel(const std::string& descriptor) {

@@ -4,5 +4,15 @@
 --flagfile=ml_perf/flags/9/selfplay.flags
 
 --holdout_pct=0
-# --parallel_games=16
-# --allow_pass=false
+--engine=random
+--device=0
+--cache_size_mb=0
+
+--selfplay_threads=48
+--parallel_search=1
+--parallel_inference=48
+--concurrent_games_per_thread=1
+
+--allow_pass=0
+--target_pruning=0
+--restrict_in_bensons=0
