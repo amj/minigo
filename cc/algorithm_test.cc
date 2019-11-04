@@ -12,35 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "cc/thread.h"
+#include "cc/algorithm.h"
 
-#include <algorithm>
+#include <array>
 
-#include "cc/logging.h"
+#include "cc/random.h"
+#include "gtest/gtest.h"
 
 namespace minigo {
+namespace {
 
-Thread::Thread(std::string name) : name_(std::move(name)) {
-  constexpr size_t kMaxLen = 15;
-  if (name_.size() > kMaxLen) {
-    name_.resize(kMaxLen);
+TEST(AlgorithmTest, ArgMaxSseRandom) {
+  Random rnd(Random::kUniqueSeed, Random::kUniqueStream);
+
+  std::array<float, 1237> vals;
+  for (int iter = 0; iter < 100; ++iter) {
+    rnd.Uniform(&vals);
+
+    auto sse_result = ArgMaxSse(vals);
+    auto c_result = ArgMax(vals);
+    ASSERT_EQ(sse_result, c_result);
   }
 }
 
-Thread::~Thread() = default;
+TEST(AlgorithmTest, ArgMaxSseTieBreak) {
+  std::array<float, 15> vals{};
+  vals[3] = 1;
+  vals[7] = 1;
+  ASSERT_EQ(3, ArgMaxSse(vals));
 
-void Thread::Start() {
-  impl_ = std::thread([this] { Run(); });
-  if (!name_.empty()) {
-    pthread_setname_np(handle(), name_.c_str());
-  }
+  vals[14] = 1;
+  ASSERT_EQ(3, ArgMaxSse(vals));
 }
 
-void Thread::Join() {
-  MG_CHECK(impl_.joinable());
-  impl_.join();
-}
-
-void LambdaThread::Run() { closure_(); }
-
+}  // namespace
 }  // namespace minigo
